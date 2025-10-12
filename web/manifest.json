@@ -1,0 +1,11 @@
+{
+  "name": "clash",
+  "short_name": "Clash",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#0175C2",
+  "theme_color": "#0175C2",
+  "description": "A cross-platform Clash proxy tool built on Flutter",
+  "orientation": "portrait-primary",
+  "prefer_related_applications": false
+}
