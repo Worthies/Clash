@@ -16,67 +16,73 @@ import 'pages/logs_page.dart';
 import 'pages/test_page.dart';
 import 'pages/settings_page.dart';
 
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+void main() {
+  // Keep a reference to state so zone and platform handlers can log to it
+  ClashState? state;
 
-  // Initialize window manager for desktop platforms
-  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    await windowManager.ensureInitialized();
-
-    WindowOptions windowOptions = const WindowOptions(
-      size: Size(1200, 800),
-      minimumSize: Size(800, 600),
-      center: true,
-      backgroundColor: Colors.transparent,
-      skipTaskbar: false,
-      titleBarStyle: TitleBarStyle.hidden,
-    );
-
-    windowManager.waitUntilReadyToShow(windowOptions, () async {
-      await windowManager.show();
-      await windowManager.focus();
-      await windowManager.setPreventClose(true);
-    });
-  }
-
-  final state = ClashState();
-  await state.init();
-  state.simulateTraffic();
-
-  // Capture Flutter framework errors and add them to app logs
-  FlutterError.onError = (FlutterErrorDetails details) {
-    try {
-      state.addLog(
-        LogEntry(
-          level: 'ERROR',
-          message: 'Flutter error: ${details.exceptionAsString()}\n${details.stack ?? ''}',
-          time: DateTime.now(),
-        ),
-      );
-    } catch (_) {}
-    // Still print to console for debugging when running locally
-    FlutterError.presentError(details);
-  };
-
-  // Capture uncaught async errors via Zone
   runZonedGuarded(
-    () {
-      runApp(ChangeNotifierProvider(create: (_) => state, child: const ClashApp()));
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+
+      // Initialize window manager for desktop platforms
+      if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+        await windowManager.ensureInitialized();
+
+        WindowOptions windowOptions = const WindowOptions(
+          size: Size(1200, 800),
+          minimumSize: Size(800, 600),
+          center: true,
+          backgroundColor: Colors.transparent,
+          skipTaskbar: false,
+          titleBarStyle: TitleBarStyle.hidden,
+        );
+
+        windowManager.waitUntilReadyToShow(windowOptions, () async {
+          await windowManager.show();
+          await windowManager.focus();
+          await windowManager.setPreventClose(true);
+        });
+      }
+
+      state = ClashState();
+      await state!.init();
+      state!.simulateTraffic();
+
+      // Capture Flutter framework errors and add them to app logs
+      FlutterError.onError = (FlutterErrorDetails details) {
+        try {
+          state?.addLog(
+            LogEntry(
+              level: 'ERROR',
+              message: 'Flutter error: ${details.exceptionAsString()}\n${details.stack ?? ''}',
+              time: DateTime.now(),
+            ),
+          );
+        } catch (_) {}
+        FlutterError.presentError(details);
+      };
+
+      // Run app inside the same zone
+      runApp(ChangeNotifierProvider(create: (_) => state!, child: const ClashApp()));
+
+      // Platform-level errors (engine) - return true to indicate handled
+      PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+        try {
+          state?.addLog(LogEntry(level: 'ERROR', message: 'Platform error: $error\n$stack', time: DateTime.now()));
+        } catch (_) {}
+        return true;
+      };
     },
     (error, stack) {
+      // Zone-level uncaught errors — prefer logging into state if available
       try {
-        state.addLog(LogEntry(level: 'ERROR', message: 'Uncaught error: $error\n$stack', time: DateTime.now()));
-      } catch (_) {}
+        state?.addLog(LogEntry(level: 'ERROR', message: 'Uncaught error: $error\n$stack', time: DateTime.now()));
+      } catch (_) {
+        // Fallback to console if state is not available
+        FlutterError.reportError(FlutterErrorDetails(exception: error, stack: stack));
+      }
     },
   );
-
-  // Platform-level errors (engine) - return true to indicate handled
-  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
-    try {
-      state.addLog(LogEntry(level: 'ERROR', message: 'Platform error: $error\n$stack', time: DateTime.now()));
-    } catch (_) {}
-    return true;
-  };
 }
 
 class ClashApp extends StatelessWidget {
