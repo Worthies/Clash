@@ -30,7 +30,9 @@ class RulesPage extends StatelessWidget {
                     ),
                     child: ListTile(
                       leading: CircleAvatar(
-                        backgroundColor: _getRuleColor(rule.type).withOpacity(0.2),
+                        backgroundColor: _getRuleColor(
+                          rule.type,
+                        ).withValues(alpha: 0.2),
                         child: Icon(
                           _getRuleIcon(rule.type),
                           color: _getRuleColor(rule.type),
@@ -41,7 +43,7 @@ class RulesPage extends StatelessWidget {
                       subtitle: Text(rule.payload),
                       trailing: Chip(
                         label: Text(rule.proxy),
-                        backgroundColor: Colors.blue.withOpacity(0.1),
+                        backgroundColor: Colors.blue.withValues(alpha: 0.1),
                       ),
                     ),
                   );

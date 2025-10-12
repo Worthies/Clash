@@ -5,3 +5,14 @@ linter:
     prefer_const_constructors: true
     prefer_const_literals_to_create_immutables: true
     avoid_unnecessary_containers: true
+
+analyzer:
+  language:
+    strict-casts: false
+    strict-inference: false
+    strict-raw-types: false
+  errors:
+    todo: ignore
+
+# Set line length to 132 characters
+# This affects formatting via dart format

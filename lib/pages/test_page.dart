@@ -45,7 +45,9 @@ class _TestPageState extends State<TestPage> {
             Expanded(
               child: _testResults.isEmpty
                   ? const Center(
-                      child: Text('Click "Start Test" to begin testing proxies'),
+                      child: Text(
+                        'Click "Start Test" to begin testing proxies',
+                      ),
                     )
                   : ListView.builder(
                       itemCount: _testResults.length,
@@ -58,15 +60,21 @@ class _TestPageState extends State<TestPage> {
                           ),
                           child: ListTile(
                             leading: Icon(
-                              result['success'] ? Icons.check_circle : Icons.error,
-                              color: result['success'] ? Colors.green : Colors.red,
+                              result['success']
+                                  ? Icons.check_circle
+                                  : Icons.error,
+                              color: result['success']
+                                  ? Colors.green
+                                  : Colors.red,
                             ),
                             title: Text(result['name']),
                             subtitle: Text(result['message']),
                             trailing: result['success']
                                 ? Chip(
                                     label: Text('${result['delay']}ms'),
-                                    backgroundColor: _getDelayColor(result['delay']),
+                                    backgroundColor: _getDelayColor(
+                                      result['delay'],
+                                    ),
                                   )
                                 : null,
                           ),
@@ -88,11 +96,13 @@ class _TestPageState extends State<TestPage> {
 
     for (final proxy in state.proxies) {
       await Future.delayed(const Duration(milliseconds: 500));
-      
+
       // Simulate test
-      final delay = proxy.delay > 0 ? proxy.delay : (50 + (proxy.name.hashCode % 200));
+      final delay = proxy.delay > 0
+          ? proxy.delay
+          : (50 + (proxy.name.hashCode % 200));
       final success = delay < 300;
-      
+
       setState(() {
         _testResults.add({
           'name': proxy.name,
@@ -109,8 +119,8 @@ class _TestPageState extends State<TestPage> {
   }
 
   Color _getDelayColor(int delay) {
-    if (delay < 100) return Colors.green.withOpacity(0.2);
-    if (delay < 200) return Colors.orange.withOpacity(0.2);
-    return Colors.red.withOpacity(0.2);
+    if (delay < 100) return Colors.green.withValues(alpha: 0.2);
+    if (delay < 200) return Colors.orange.withValues(alpha: 0.2);
+    return Colors.red.withValues(alpha: 0.2);
   }
 }

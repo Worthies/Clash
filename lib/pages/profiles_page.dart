@@ -45,8 +45,12 @@ class ProfilesPage extends StatelessWidget {
                           ),
                           child: ListTile(
                             leading: Icon(
-                              profile.isActive ? Icons.check_circle : Icons.article,
-                              color: profile.isActive ? Colors.green : Colors.grey,
+                              profile.isActive
+                                  ? Icons.check_circle
+                                  : Icons.article,
+                              color: profile.isActive
+                                  ? Colors.green
+                                  : Colors.grey,
                             ),
                             title: Text(profile.name),
                             subtitle: Text(
@@ -59,6 +63,36 @@ class ProfilesPage extends StatelessWidget {
                                 state.removeProfile(profile);
                               },
                             ),
+                            onTap: () async {
+                              final navigator = Navigator.of(context);
+                              final messenger = ScaffoldMessenger.of(context);
+                              showDialog(
+                                context: context,
+                                barrierDismissible: false,
+                                builder: (context) => const Center(
+                                  child: CircularProgressIndicator(),
+                                ),
+                              );
+                              await state.activateProfile(profile);
+                              navigator.pop();
+                              if (state.proxies.isNotEmpty) {
+                                messenger.showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Profile "${profile.name}" activated',
+                                    ),
+                                  ),
+                                );
+                              } else {
+                                messenger.showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      'Failed to activate profile "${profile.name}". See logs.',
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
                           ),
                         );
                       },
@@ -105,12 +139,15 @@ class ProfilesPage extends StatelessWidget {
           ),
           ElevatedButton(
             onPressed: () {
-              if (nameController.text.isNotEmpty && urlController.text.isNotEmpty) {
-                state.addProfile(Profile(
-                  name: nameController.text,
-                  url: urlController.text,
-                  lastUpdate: DateTime.now(),
-                ));
+              if (nameController.text.isNotEmpty &&
+                  urlController.text.isNotEmpty) {
+                state.addProfile(
+                  Profile(
+                    name: nameController.text,
+                    url: urlController.text,
+                    lastUpdate: DateTime.now(),
+                  ),
+                );
                 Navigator.pop(context);
               }
             },

@@ -19,20 +19,20 @@
    ```
 
 4. **Run the app**
-   
+
    For desktop (if supported):
    ```bash
    flutter run -d linux    # For Linux
    flutter run -d windows  # For Windows
    flutter run -d macos    # For macOS
    ```
-   
+
    For mobile:
    ```bash
    flutter run -d android  # For Android
    flutter run -d ios      # For iOS
    ```
-   
+
    For web:
    ```bash
    flutter run -d chrome   # For web browser
@@ -107,7 +107,7 @@ To remove a profile, click the trash icon.
 2. **Configure options**:
    - **System Proxy**: Enable/disable system proxy
    - **Allow LAN**: Allow LAN connections
-   - **Mixed Port**: Set the port number (default: 7890)
+   - **Mixed Port**: Set the port number (default: 1080)
 
 ## Development
 

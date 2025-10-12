@@ -8,28 +8,28 @@ Since we cannot run the Flutter app in this environment, here's a detailed descr
 - Top: Traffic Monitor Panel (horizontal card)
   - Three columns: Upload (blue) | Download (green) | Total (orange)
   - Each shows icon, label, and formatted traffic size
-  
+
 **Cards below:**
 1. Current Profile Card
    - Icon: Article icon
    - Shows profile name or "No active profile"
-   
+
 2. Selected Node Card
    - Icon: Router icon
    - Shows selected proxy node name (default: "DIRECT")
-   
+
 3. Proxy Mode Card
    - Icon: Security icon
    - Shows current mode (Rule/Global/Direct)
-   
+
 4. Network Settings Card
    - Icon: Settings ethernet icon
-   - Shows "Mixed Port: 7890" and "Allow LAN: No"
-   
+   - Shows "Mixed Port: 1080" and "Allow LAN: No"
+
 5. IP Information Card
    - Icon: Public/globe icon
    - Shows IP address and country
-   
+
 6. System Info Card
    - Icon: Computer icon
    - Shows system proxy status and connection count
