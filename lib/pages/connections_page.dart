@@ -32,9 +32,7 @@ class ConnectionsPage extends StatelessWidget {
             ),
             Expanded(
               child: state.connections.isEmpty
-                  ? const Center(
-                      child: Text('No active connections'),
-                    )
+                  ? const Center(child: Text('No active connections'))
                   : ListView.builder(
                       itemCount: state.connections.length,
                       itemBuilder: (context, index) {
@@ -46,7 +44,9 @@ class ConnectionsPage extends StatelessWidget {
                           ),
                           child: ExpansionTile(
                             leading: Icon(
-                              conn.network == 'TCP' ? Icons.swap_horiz : Icons.swap_vert,
+                              conn.network == 'TCP'
+                                  ? Icons.swap_horiz
+                                  : Icons.swap_vert,
                               color: Theme.of(context).colorScheme.primary,
                             ),
                             title: Text(conn.host),
@@ -58,10 +58,22 @@ class ConnectionsPage extends StatelessWidget {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     _buildInfoRow('Source', conn.source),
-                                    _buildInfoRow('Destination', conn.destination),
-                                    _buildInfoRow('Upload', _formatBytes(conn.upload)),
-                                    _buildInfoRow('Download', _formatBytes(conn.download)),
-                                    _buildInfoRow('Start Time', _formatTime(conn.startTime)),
+                                    _buildInfoRow(
+                                      'Destination',
+                                      conn.destination,
+                                    ),
+                                    _buildInfoRow(
+                                      'Upload',
+                                      _formatBytes(conn.upload),
+                                    ),
+                                    _buildInfoRow(
+                                      'Download',
+                                      _formatBytes(conn.download),
+                                    ),
+                                    _buildInfoRow(
+                                      'Start Time',
+                                      _formatTime(conn.startTime),
+                                    ),
                                   ],
                                 ),
                               ),

@@ -11,7 +11,7 @@ class TrafficMonitor extends StatelessWidget {
       builder: (context, state, child) {
         final stats = state.trafficStats;
         return Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
             color: Theme.of(context).colorScheme.surfaceContainerHighest,
             borderRadius: BorderRadius.circular(8),
@@ -21,21 +21,18 @@ class TrafficMonitor extends StatelessWidget {
             children: [
               _buildStatItem(
                 context,
-                'Upload',
                 stats.formatBytes(stats.upload),
                 Icons.upload,
                 Colors.blue,
               ),
               _buildStatItem(
                 context,
-                'Download',
                 stats.formatBytes(stats.download),
                 Icons.download,
                 Colors.green,
               ),
               _buildStatItem(
                 context,
-                'Total',
                 stats.formatBytes(stats.total),
                 Icons.data_usage,
                 Colors.orange,
@@ -49,7 +46,6 @@ class TrafficMonitor extends StatelessWidget {
 
   Widget _buildStatItem(
     BuildContext context,
-    String label,
     String value,
     IconData icon,
     Color color,
@@ -58,18 +54,13 @@ class TrafficMonitor extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, color: color, size: 24),
-        const SizedBox(height: 8),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
         const SizedBox(height: 4),
         Text(
           value,
           style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
         ),
       ],
     );

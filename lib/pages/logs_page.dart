@@ -32,9 +32,7 @@ class LogsPage extends StatelessWidget {
             ),
             Expanded(
               child: state.logs.isEmpty
-                  ? const Center(
-                      child: Text('No logs yet'),
-                    )
+                  ? const Center(child: Text('No logs yet'))
                   : ListView.builder(
                       itemCount: state.logs.length,
                       itemBuilder: (context, index) {

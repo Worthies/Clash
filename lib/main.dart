@@ -15,6 +15,7 @@ import 'pages/rules_page.dart';
 import 'pages/logs_page.dart';
 import 'pages/test_page.dart';
 import 'pages/settings_page.dart';
+import 'widgets/bandwidth_chart.dart';
 
 void main() {
   // Keep a reference to state so zone and platform handlers can log to it
@@ -54,7 +55,8 @@ void main() {
           state?.addLog(
             LogEntry(
               level: 'ERROR',
-              message: 'Flutter error: ${details.exceptionAsString()}\n${details.stack ?? ''}',
+              message:
+                  'Flutter error: ${details.exceptionAsString()}\n${details.stack ?? ''}',
               time: DateTime.now(),
             ),
           );
@@ -63,12 +65,20 @@ void main() {
       };
 
       // Run app inside the same zone
-      runApp(ChangeNotifierProvider(create: (_) => state!, child: const ClashApp()));
+      runApp(
+        ChangeNotifierProvider(create: (_) => state!, child: const ClashApp()),
+      );
 
       // Platform-level errors (engine) - return true to indicate handled
       PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
         try {
-          state?.addLog(LogEntry(level: 'ERROR', message: 'Platform error: $error\n$stack', time: DateTime.now()));
+          state?.addLog(
+            LogEntry(
+              level: 'ERROR',
+              message: 'Platform error: $error\n$stack',
+              time: DateTime.now(),
+            ),
+          );
         } catch (_) {}
         return true;
       };
@@ -76,10 +86,18 @@ void main() {
     (error, stack) {
       // Zone-level uncaught errors — prefer logging into state if available
       try {
-        state?.addLog(LogEntry(level: 'ERROR', message: 'Uncaught error: $error\n$stack', time: DateTime.now()));
+        state?.addLog(
+          LogEntry(
+            level: 'ERROR',
+            message: 'Uncaught error: $error\n$stack',
+            time: DateTime.now(),
+          ),
+        );
       } catch (_) {
         // Fallback to console if state is not available
-        FlutterError.reportError(FlutterErrorDetails(exception: error, stack: stack));
+        FlutterError.reportError(
+          FlutterErrorDetails(exception: error, stack: stack),
+        );
       }
     },
   );
@@ -94,9 +112,15 @@ class ClashApp extends StatelessWidget {
       builder: (context, state, _) {
         return MaterialApp(
           title: 'Clash',
-          theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue), useMaterial3: true),
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
+            useMaterial3: true,
+          ),
           darkTheme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.dark),
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.blue,
+              brightness: Brightness.dark,
+            ),
             useMaterial3: true,
           ),
           themeMode: state.themeMode,
@@ -140,7 +164,10 @@ class _MainPageState extends State<MainPage> with WindowListener {
     // Setup context menu
     final Menu menu = Menu();
     await menu.buildFrom([
-      MenuItemLabel(label: 'Show Clash', onClicked: (menuItem) => _showWindow()),
+      MenuItemLabel(
+        label: 'Show Clash',
+        onClicked: (menuItem) => _showWindow(),
+      ),
       MenuSeparator(),
       MenuItemLabel(label: 'Exit', onClicked: (menuItem) => _exitApp()),
     ]);
@@ -193,19 +220,52 @@ class _MainPageState extends State<MainPage> with WindowListener {
   ];
 
   final List<NavigationDestination> _destinations = const [
-    NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
-    NavigationDestination(icon: Icon(Icons.router_outlined), selectedIcon: Icon(Icons.router), label: 'Proxies'),
-    NavigationDestination(icon: Icon(Icons.article_outlined), selectedIcon: Icon(Icons.article), label: 'Profiles'),
-    NavigationDestination(icon: Icon(Icons.swap_horiz_outlined), selectedIcon: Icon(Icons.swap_horiz), label: 'Connections'),
-    NavigationDestination(icon: Icon(Icons.rule_outlined), selectedIcon: Icon(Icons.rule), label: 'Rules'),
-    NavigationDestination(icon: Icon(Icons.description_outlined), selectedIcon: Icon(Icons.description), label: 'Logs'),
-    NavigationDestination(icon: Icon(Icons.speed_outlined), selectedIcon: Icon(Icons.speed), label: 'Test'),
-    NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),
+    NavigationDestination(
+      icon: Icon(Icons.home_outlined),
+      selectedIcon: Icon(Icons.home),
+      label: 'Home',
+    ),
+    NavigationDestination(
+      icon: Icon(Icons.router_outlined),
+      selectedIcon: Icon(Icons.router),
+      label: 'Proxies',
+    ),
+    NavigationDestination(
+      icon: Icon(Icons.article_outlined),
+      selectedIcon: Icon(Icons.article),
+      label: 'Profiles',
+    ),
+    NavigationDestination(
+      icon: Icon(Icons.swap_horiz_outlined),
+      selectedIcon: Icon(Icons.swap_horiz),
+      label: 'Connections',
+    ),
+    NavigationDestination(
+      icon: Icon(Icons.rule_outlined),
+      selectedIcon: Icon(Icons.rule),
+      label: 'Rules',
+    ),
+    NavigationDestination(
+      icon: Icon(Icons.description_outlined),
+      selectedIcon: Icon(Icons.description),
+      label: 'Logs',
+    ),
+    NavigationDestination(
+      icon: Icon(Icons.speed_outlined),
+      selectedIcon: Icon(Icons.speed),
+      label: 'Test',
+    ),
+    NavigationDestination(
+      icon: Icon(Icons.settings_outlined),
+      selectedIcon: Icon(Icons.settings),
+      label: 'Settings',
+    ),
   ];
 
   @override
   Widget build(BuildContext context) {
-    final isDesktop = Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    final isDesktop =
+        Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
     if (isDesktop) {
       // Desktop layout: left navigation rail with traffic panel at bottom-left
@@ -225,13 +285,15 @@ class _MainPageState extends State<MainPage> with WindowListener {
                         // Navigation rail area
                         Expanded(
                           child: NavigationRail(
+                            extended: true,
+                            // minExtendedWidth: 200,
                             selectedIndex: _selectedIndex,
                             onDestinationSelected: (index) {
                               setState(() {
                                 _selectedIndex = index;
                               });
                             },
-                            labelType: NavigationRailLabelType.all,
+                            labelType: NavigationRailLabelType.none,
                             destinations: _destinations
                                 .map(
                                   (d) => NavigationRailDestination(
@@ -245,24 +307,21 @@ class _MainPageState extends State<MainPage> with WindowListener {
                           ),
                         ),
 
-                        // Traffic panel (left-bottom)
+                        // Traffic panel (left-bottom) with bandwidth chart
                         Padding(
-                          padding: const EdgeInsets.all(0.0),
+                          padding: const EdgeInsets.all(4.0),
                           child: Consumer<ClashState>(
                             builder: (context, state, _) {
-                              final stats = state.trafficStats;
                               return SizedBox(
+                                height: 120,
                                 child: Card(
                                   margin: EdgeInsets.zero,
                                   child: Padding(
-                                    padding: const EdgeInsets.all(0.0),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text('🔺${state.trafficStats.formatBytes(stats.upload)}'),
-                                        Text('🔻${state.trafficStats.formatBytes(stats.download)}'),
-                                        Text('⚖️${state.trafficStats.formatBytes(stats.total)}'),
-                                      ],
+                                    padding: const EdgeInsets.all(6.0),
+                                    child: BandwidthChart(
+                                      uploadBytes: state.trafficStats.upload,
+                                      downloadBytes:
+                                          state.trafficStats.download,
                                     ),
                                   ),
                                 ),
@@ -309,7 +368,9 @@ class _MainPageState extends State<MainPage> with WindowListener {
       height: 40,
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor, width: 1)),
+        border: Border(
+          bottom: BorderSide(color: Theme.of(context).dividerColor, width: 1),
+        ),
       ),
       child: Row(
         children: [
@@ -334,7 +395,12 @@ class _MainPageState extends State<MainPage> with WindowListener {
                   children: [
                     Image.asset('icon.png', width: 20, height: 20),
                     const SizedBox(width: 8),
-                    Text('Clash', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+                    Text(
+                      'Clash',
+                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -347,7 +413,10 @@ class _MainPageState extends State<MainPage> with WindowListener {
               builder: (context, state, _) {
                 final isDark = state.themeMode == ThemeMode.dark;
                 return IconButton(
-                  icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode, size: 16),
+                  icon: Icon(
+                    isDark ? Icons.light_mode : Icons.dark_mode,
+                    size: 16,
+                  ),
                   onPressed: () {
                     state.toggleTheme();
                   },
@@ -387,14 +456,22 @@ class _MainPageState extends State<MainPage> with WindowListener {
     );
   }
 
-  Widget _buildWindowButton({required IconData icon, required VoidCallback onPressed, bool isClose = false}) {
+  Widget _buildWindowButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+    bool isClose = false,
+  }) {
     return SizedBox(
       width: 46,
       height: 40,
       child: InkWell(
         onTap: onPressed,
         hoverColor: isClose ? Colors.red.withValues(alpha: 0.9) : null,
-        child: Icon(icon, size: 16, color: isClose ? Colors.red.shade400 : null),
+        child: Icon(
+          icon,
+          size: 16,
+          color: isClose ? Colors.red.shade400 : null,
+        ),
       ),
     );
   }

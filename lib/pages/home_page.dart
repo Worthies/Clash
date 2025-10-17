@@ -18,20 +18,22 @@ class HomePage extends StatelessWidget {
               // Traffic Monitor
               const TrafficMonitor(),
               const SizedBox(height: 20),
-              
+
               // Current Profile
               _buildCard(
                 context,
                 'Current Profile',
                 state.profiles.isEmpty
                     ? 'No active profile'
-                    : state.profiles.firstWhere(
-                        (p) => p.isActive,
-                        orElse: () => state.profiles.first,
-                      ).name,
+                    : state.profiles
+                          .firstWhere(
+                            (p) => p.isActive,
+                            orElse: () => state.profiles.first,
+                          )
+                          .name,
                 Icons.article,
               ),
-              
+
               // Selected Node
               _buildCard(
                 context,
@@ -39,7 +41,7 @@ class HomePage extends StatelessWidget {
                 state.selectedNode?.name ?? 'DIRECT',
                 Icons.router,
               ),
-              
+
               // Proxy Mode
               _buildCard(
                 context,
@@ -47,7 +49,7 @@ class HomePage extends StatelessWidget {
                 state.proxyMode,
                 Icons.security,
               ),
-              
+
               // Network Settings
               _buildCard(
                 context,
@@ -55,7 +57,7 @@ class HomePage extends StatelessWidget {
                 'Mixed Port: ${state.mixedPort}\nAllow LAN: ${state.allowLan ? "Yes" : "No"}',
                 Icons.settings_ethernet,
               ),
-              
+
               // IP Info
               _buildCard(
                 context,
@@ -63,7 +65,7 @@ class HomePage extends StatelessWidget {
                 '${state.ipAddress}\n${state.country}',
                 Icons.public,
               ),
-              
+
               // System Info
               _buildCard(
                 context,
@@ -88,10 +90,7 @@ class HomePage extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 12),
       child: ListTile(
         leading: Icon(icon, color: Theme.of(context).colorScheme.primary),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text(content),
       ),
     );

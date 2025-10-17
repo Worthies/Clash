@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import '../models/clash_models.dart';
 import '../protocols/trojan_protocol.dart';
@@ -13,7 +14,23 @@ class ProxyService {
   final int _localPort;
   bool _isRunning = false;
 
-  ProxyService({int localPort = 1080}) : _localPort = localPort;
+  // Traffic statistics (cumulative bytes)
+  int _totalUpload = 0;
+  int _totalDownload = 0;
+  Timer? _trafficUpdateTimer;
+  final void Function(int upload, int download)? _onTrafficUpdate;
+  final void Function(Connection)? _onConnectionStart;
+  final void Function(String)? _onConnectionEnd;
+
+  ProxyService({
+    int localPort = 1080,
+    void Function(int, int)? onTrafficUpdate,
+    void Function(Connection)? onConnectionStart,
+    void Function(String)? onConnectionEnd,
+  }) : _localPort = localPort,
+       _onTrafficUpdate = onTrafficUpdate,
+       _onConnectionStart = onConnectionStart,
+       _onConnectionEnd = onConnectionEnd;
 
   bool get isRunning => _isRunning;
   ProxyNode? get activeNode => _activeNode;
@@ -30,6 +47,9 @@ class ProxyService {
       // Start local SOCKS/HTTP proxy server
       await _startLocalServer();
 
+      // Start traffic monitoring timer (update every 500ms)
+      _startTrafficMonitoring();
+
       _isRunning = true;
       return true;
     } catch (e) {
@@ -44,14 +64,39 @@ class ProxyService {
       await _localServer!.close();
       _localServer = null;
     }
+    _trafficUpdateTimer?.cancel();
+    _trafficUpdateTimer = null;
     _activeNode = null;
     _isRunning = false;
+  }
+
+  /// Start periodic traffic monitoring
+  void _startTrafficMonitoring() {
+    _trafficUpdateTimer?.cancel();
+    _trafficUpdateTimer = Timer.periodic(const Duration(milliseconds: 500), (
+      _,
+    ) {
+      _onTrafficUpdate?.call(_totalUpload, _totalDownload);
+    });
+  }
+
+  /// Track uploaded bytes
+  void _trackUpload(int bytes) {
+    _totalUpload += bytes;
+  }
+
+  /// Track downloaded bytes
+  void _trackDownload(int bytes) {
+    _totalDownload += bytes;
   }
 
   /// Start local SOCKS5/HTTP proxy server
   Future<void> _startLocalServer() async {
     try {
-      _localServer = await ServerSocket.bind(InternetAddress.loopbackIPv4, _localPort);
+      _localServer = await ServerSocket.bind(
+        InternetAddress.loopbackIPv4,
+        _localPort,
+      );
 
       _localServer!.listen((Socket clientSocket) async {
         await _handleClientConnection(clientSocket);
@@ -101,7 +146,7 @@ class ProxyService {
         await _handleSocks5WithBuffer(clientSocket, buffer, broadcastStream);
       } else if (firstByte >= 0x41 && firstByte <= 0x5A) {
         // Looks like HTTP (uppercase ASCII letters)
-        await _handleHttpProtocol(clientSocket);
+        await _handleHttpProtocol(clientSocket, buffer, broadcastStream);
       } else {
         clientSocket.destroy();
       }
@@ -111,7 +156,11 @@ class ProxyService {
   }
 
   /// Handle SOCKS5 protocol with buffered initial data
-  Future<void> _handleSocks5WithBuffer(Socket clientSocket, List<int> initialBuffer, Stream<List<int>> socketStream) async {
+  Future<void> _handleSocks5WithBuffer(
+    Socket clientSocket,
+    List<int> initialBuffer,
+    Stream<List<int>> socketStream,
+  ) async {
     if (_activeNode == null) {
       clientSocket.destroy();
       return;
@@ -119,7 +168,11 @@ class ProxyService {
 
     try {
       // Create handler with buffered data and stream
-      final handler = Socks5HandlerWithStream(clientSocket, initialBuffer, socketStream);
+      final handler = Socks5HandlerWithStream(
+        clientSocket,
+        initialBuffer,
+        socketStream,
+      );
       final request = await handler.handleHandshake();
 
       if (request == null) {
@@ -144,16 +197,144 @@ class ProxyService {
       );
 
       // Connect through proxy - pass the controller's stream for data forwarding
-      await _connectThroughProxy(clientSocket, dataController.stream, remainingData, request.targetHost, request.targetPort);
+      await _connectThroughProxy(
+        clientSocket,
+        dataController.stream,
+        remainingData,
+        request.targetHost,
+        request.targetPort,
+      );
     } catch (e) {
       clientSocket.destroy();
     }
   }
 
-  /// Handle HTTP protocol connection
-  Future<void> _handleHttpProtocol(Socket clientSocket) async {
-    // HTTP protocol not fully implemented - use SOCKS5 for now
-    clientSocket.destroy();
+  /// Handle HTTP CONNECT protocol connection
+  Future<void> _handleHttpProtocol(
+    Socket clientSocket,
+    List<int> initialBuffer,
+    Stream<List<int>> socketStream,
+  ) async {
+    if (_activeNode == null) {
+      clientSocket.destroy();
+      return;
+    }
+
+    try {
+      // Use the provided initial buffer and stream
+      final buffer = <int>[];
+      buffer.addAll(initialBuffer);
+      String? requestLine;
+
+      // First, check if the initial buffer already contains the request line
+      String str = String.fromCharCodes(buffer);
+      int lineEnd = str.indexOf('\r\n');
+
+      if (lineEnd == -1) {
+        // Read data until we get the first line (CONNECT request)
+        await for (final data in socketStream) {
+          buffer.addAll(data);
+          str = String.fromCharCodes(buffer);
+          lineEnd = str.indexOf('\r\n');
+
+          if (lineEnd != -1) {
+            requestLine = str.substring(0, lineEnd);
+            break;
+          }
+
+          // Safety: if buffer gets too large, bail out
+          if (buffer.length > 8192) {
+            clientSocket.destroy();
+            return;
+          }
+        }
+      } else {
+        requestLine = str.substring(0, lineEnd);
+      }
+
+      if (requestLine == null) {
+        clientSocket.destroy();
+        return;
+      }
+
+      // Parse CONNECT request: "CONNECT host:port HTTP/1.1"
+      final parts = requestLine.split(' ');
+      if (parts.length < 2 || parts[0] != 'CONNECT') {
+        // Not a CONNECT request, send 400 Bad Request
+        clientSocket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+        clientSocket.destroy();
+        return;
+      }
+
+      // Extract host:port
+      final hostPort = parts[1];
+      final colonIndex = hostPort.lastIndexOf(':');
+      if (colonIndex == -1) {
+        clientSocket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+        clientSocket.destroy();
+        return;
+      }
+
+      final targetHost = hostPort.substring(0, colonIndex);
+      final targetPort = int.tryParse(hostPort.substring(colonIndex + 1));
+
+      if (targetPort == null) {
+        clientSocket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+        clientSocket.destroy();
+        return;
+      }
+
+      // Read and discard remaining headers until we find \r\n\r\n
+      while (true) {
+        final str = String.fromCharCodes(buffer);
+        final headersEnd = str.indexOf('\r\n\r\n');
+
+        if (headersEnd != -1) {
+          // Found end of headers, any data after is payload (shouldn't be any for CONNECT)
+          final remainingData = buffer.length > headersEnd + 4
+              ? buffer.sublist(headersEnd + 4)
+              : <int>[];
+
+          // Send 200 Connection Established
+          clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+          await clientSocket.flush();
+
+          // Bridge the socket stream to a fresh controller so downstream listeners
+          // receive events even though we consumed some earlier while parsing headers.
+          final dataController = StreamController<List<int>>();
+          socketStream.listen(
+            (data) => dataController.add(data),
+            onDone: () => dataController.close(),
+            onError: (e) => dataController.addError(e),
+          );
+
+          // Now forward traffic through the proxy using the controller's stream
+          await _connectThroughProxy(
+            clientSocket,
+            dataController.stream,
+            remainingData,
+            targetHost,
+            targetPort,
+          );
+          return;
+        }
+
+        // Continue reading headers
+        final chunk = await socketStream.first;
+        buffer.addAll(chunk);
+
+        // Safety limit
+        if (buffer.length > 16384) {
+          clientSocket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+          clientSocket.destroy();
+          return;
+        }
+      }
+    } catch (_) {
+      try {
+        clientSocket.destroy();
+      } catch (_) {}
+    }
   }
 
   /// Connect through proxy and forward traffic bidirectionally
@@ -173,11 +354,29 @@ class ProxyService {
       final nodeType = _activeNode!.type.toLowerCase();
 
       if (nodeType.contains('trojan')) {
-        await _connectTrojan(clientSocket, clientStream, initialData, targetHost, targetPort);
+        await _connectTrojan(
+          clientSocket,
+          clientStream,
+          initialData,
+          targetHost,
+          targetPort,
+        );
       } else if (nodeType.contains('ss') || nodeType.contains('shadowsocks')) {
-        await _connectShadowsocks(clientSocket, clientStream, initialData, targetHost, targetPort);
+        await _connectShadowsocks(
+          clientSocket,
+          clientStream,
+          initialData,
+          targetHost,
+          targetPort,
+        );
       } else if (nodeType.contains('vmess')) {
-        await _connectVMess(clientSocket, clientStream, initialData, targetHost, targetPort);
+        await _connectVMess(
+          clientSocket,
+          clientStream,
+          initialData,
+          targetHost,
+          targetPort,
+        );
       } else {
         clientSocket.destroy();
       }
@@ -209,20 +408,61 @@ class ProxyService {
         // Small delay to let the upstream process the auth packet
         await Future.delayed(const Duration(milliseconds: 50));
         connection.socket.add(initialData);
+        _trackUpload(initialData.length);
       }
 
-      // Forward data bidirectionally using the broadcast stream
-      connection.forwardFromClient(clientStream);
+      // Forward data bidirectionally using the broadcast stream with tracking
+      clientStream.listen(
+        (data) {
+          connection.socket.add(data);
+          _trackUpload(data.length);
+        },
+        onDone: () => connection.close(),
+        onError: (_) => connection.close(),
+      );
+
+      // Notify about connection start
+      try {
+        final conn = Connection(
+          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          network: 'TCP',
+          type: 'HTTP',
+          host: '$targetHost:$targetPort',
+          source:
+              '${clientSocket.remoteAddress.address}:${clientSocket.remotePort}',
+          destination:
+              '${connection.socket.remoteAddress.address}:${connection.socket.remotePort}',
+          upload: 0,
+          download: 0,
+          startTime: DateTime.now(),
+        );
+        _onConnectionStart?.call(conn);
+      } catch (_) {}
+
       connection.serverData.listen(
-        (data) => clientSocket.add(data),
+        (data) {
+          clientSocket.add(data);
+          _trackDownload(data.length);
+        },
         onDone: () {
           // Server finished sending data, close both ends
           clientSocket.destroy();
           connection.close();
+          // notify connection end
+          try {
+            _onConnectionEnd?.call(
+              '${clientSocket.remoteAddress.address}:${clientSocket.remotePort}',
+            );
+          } catch (_) {}
         },
         onError: (_) {
           clientSocket.destroy();
           connection.close();
+          try {
+            _onConnectionEnd?.call(
+              '${clientSocket.remoteAddress.address}:${clientSocket.remotePort}',
+            );
+          } catch (_) {}
         },
       );
     } catch (e) {
@@ -248,28 +488,75 @@ class ProxyService {
         throw Exception('Shadowsocks node missing password');
       }
 
-      final ss = ShadowsocksProtocol(node: _activeNode!, password: password, method: cipher);
+      final ss = ShadowsocksProtocol(
+        node: _activeNode!,
+        password: password,
+        method: cipher,
+      );
       final connection = await ss.connect(targetHost, targetPort);
 
       // Send any initial data immediately (data after SOCKS5 handshake)
       if (initialData.isNotEmpty) {
         await Future.delayed(const Duration(milliseconds: 50));
-        final encrypted = connection.cipher.encrypt(Uint8List.fromList(initialData));
+        final encrypted = connection.cipher.encrypt(
+          Uint8List.fromList(initialData),
+        );
         connection.socket.add(encrypted);
+        _trackUpload(encrypted.length);
       }
 
-      // Forward data bidirectionally using the broadcast stream
-      connection.forwardFromClient(clientStream);
+      // Forward data bidirectionally using the broadcast stream with tracking
+      clientStream.listen(
+        (data) {
+          final encrypted = connection.cipher.encrypt(Uint8List.fromList(data));
+          connection.socket.add(encrypted);
+          _trackUpload(encrypted.length);
+        },
+        onDone: () => connection.close(),
+        onError: (_) => connection.close(),
+      );
+
+      // Notify about connection start
+      try {
+        final conn = Connection(
+          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          network: 'TCP',
+          type: 'HTTP',
+          host: '$targetHost:$targetPort',
+          source:
+              '${clientSocket.remoteAddress.address}:${clientSocket.remotePort}',
+          destination:
+              '${connection.socket.remoteAddress.address}:${connection.socket.remotePort}',
+          upload: 0,
+          download: 0,
+          startTime: DateTime.now(),
+        );
+        _onConnectionStart?.call(conn);
+      } catch (_) {}
+
       connection.serverData.listen(
-        (data) => clientSocket.add(data),
+        (data) {
+          clientSocket.add(data);
+          _trackDownload(data.length);
+        },
         onDone: () {
           // Server finished sending data, close both ends
           clientSocket.destroy();
           connection.close();
+          try {
+            _onConnectionEnd?.call(
+              '${clientSocket.remoteAddress.address}:${clientSocket.remotePort}',
+            );
+          } catch (_) {}
         },
         onError: (_) {
           clientSocket.destroy();
           connection.close();
+          try {
+            _onConnectionEnd?.call(
+              '${clientSocket.remoteAddress.address}:${clientSocket.remotePort}',
+            );
+          } catch (_) {}
         },
       );
     } catch (e) {
@@ -288,7 +575,9 @@ class ProxyService {
   ) async {
     // VMess is complex - recommend using FFI to v2ray-core
     clientSocket.destroy();
-    throw UnimplementedError('VMess protocol requires FFI integration with v2ray-core');
+    throw UnimplementedError(
+      'VMess protocol requires FFI integration with v2ray-core',
+    );
   }
 
   /// Get connection statistics

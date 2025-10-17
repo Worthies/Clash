@@ -1,0 +1,226 @@
+name: Nightly Release
+
+on:
+  schedule:
+    - cron: '0 0 * * *' # daily at 00:00 UTC
+  workflow_dispatch:
+
+jobs:
+  build-linux:
+    name: Build Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up build tools
+        run: |
+          sudo apt-get update && sudo apt-get install -y dpkg-dev zip
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 'stable'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Enable linux desktop
+        run: flutter config --enable-linux-desktop
+
+      - name: Build linux release
+        run: flutter build linux --release --no-tree-shake-icons
+
+      - name: Package .deb
+        run: |
+          make package-deb
+
+      - name: Upload deb artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clash-deb
+          path: build/dist/deb/*.deb
+
+  build-windows:
+    name: Build Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 'stable'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Enable windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Build windows release
+        run: flutter build windows --release
+
+      - name: Zip windows build
+        shell: pwsh
+        run: |
+          $out = Join-Path $env:GITHUB_WORKSPACE 'artifacts'
+          New-Item -ItemType Directory -Path $out -Force | Out-Null
+          $src = Join-Path $env:GITHUB_WORKSPACE 'build\windows\runner\Release\*'
+          $dst = Join-Path $out "clash-windows-x64-$($env:GITHUB_RUN_ID).zip"
+          Compress-Archive -Path $src -DestinationPath $dst -Force
+
+      - name: Upload windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clash-windows
+          path: artifacts/*.zip
+
+  build-macos:
+    name: Build macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 'stable'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Enable macos desktop
+        run: flutter config --enable-macos-desktop
+
+      - name: Build macos release
+        run: flutter build macos --release
+
+      - name: Zip macOS build
+        run: |
+          mkdir -p artifacts
+          if [ -d build/macos/Build/Products/Release ]; then
+            cd build/macos/Build/Products/Release || exit 0
+            zip -r "${GITHUB_WORKSPACE}/artifacts/clash-macos-x64-${GITHUB_RUN_ID}.zip" . || true
+          fi
+
+      - name: Upload macos artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clash-macos
+          path: artifacts/*.zip
+
+  build-web:
+    name: Build Web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 'stable'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build web release
+        run: flutter build web --release
+
+      - name: Zip web build
+        run: |
+          mkdir -p artifacts
+          if [ -d build/web ]; then
+            cd build/web || exit 0
+            zip -r "${GITHUB_WORKSPACE}/artifacts/clash-web-${GITHUB_RUN_ID}.zip" . || true
+          fi
+
+      - name: Upload web artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clash-web
+          path: artifacts/*.zip
+
+  release:
+    name: Create Nightly Release
+    runs-on: ubuntu-latest
+    needs: [build-linux, build-windows, build-macos, build-web]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: clash-deb
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: clash-windows
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: clash-macos
+
+      - name: Download web artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: clash-web
+
+      - name: Prepare release tag
+        id: tag
+        run: |
+          echo "RELEASE_TAG=nightly-$(date -u +%Y%m%d)" >> $GITHUB_ENV
+          echo "RELEASE_NAME=Nightly build $(date -u +%Y-%m-%d)" >> $GITHUB_ENV
+
+      - name: Create GitHub release
+        id: create_release
+        uses: actions/create-release@v1
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          release_name: ${{ env.RELEASE_NAME }}
+          body: |
+            Nightly automated builds for ${GITHUB_REPOSITORY}.
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload release assets
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./build/dist/deb/*.deb
+          asset_name: clash-linux.deb
+          asset_content_type: application/vnd.debian.binary-package
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload windows asset
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./clash-windows-*
+          asset_name: clash-windows.zip
+          asset_content_type: application/zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload macos asset
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./clash-macos-*
+          asset_name: clash-macos.zip
+          asset_content_type: application/zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload web asset
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./clash-web-*
+          asset_name: clash-web.zip
+          asset_content_type: application/zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

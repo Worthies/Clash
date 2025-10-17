@@ -13,10 +13,17 @@ class ShadowsocksProtocol {
   final String password;
   final String method;
 
-  ShadowsocksProtocol({required this.node, required this.password, required this.method});
+  ShadowsocksProtocol({
+    required this.node,
+    required this.password,
+    required this.method,
+  });
 
   /// Connect to target through Shadowsocks proxy
-  Future<ShadowsocksConnection> connect(String targetHost, int targetPort) async {
+  Future<ShadowsocksConnection> connect(
+    String targetHost,
+    int targetPort,
+  ) async {
     if (node.host == null || node.port == null) {
       throw Exception('Invalid proxy node: missing host or port');
     }
@@ -38,7 +45,12 @@ class ShadowsocksProtocol {
     socket.add(salt);
     socket.add(encryptedRequest);
 
-    return ShadowsocksConnection(socket: socket, cipher: cipher, targetHost: targetHost, targetPort: targetPort);
+    return ShadowsocksConnection(
+      socket: socket,
+      cipher: cipher,
+      targetHost: targetHost,
+      targetPort: targetPort,
+    );
   }
 
   /// Build SOCKS5-like address request
@@ -117,7 +129,9 @@ class ShadowsocksProtocol {
   Uint8List _generateSalt() {
     final saltSize = _getSaltSize(method);
     final random = Random.secure();
-    return Uint8List.fromList(List.generate(saltSize, (_) => random.nextInt(256)));
+    return Uint8List.fromList(
+      List.generate(saltSize, (_) => random.nextInt(256)),
+    );
   }
 
   int _getSaltSize(String method) {
@@ -230,7 +244,12 @@ class ShadowsocksConnection {
 
   final _controller = StreamController<Uint8List>();
 
-  ShadowsocksConnection({required this.socket, required this.cipher, required this.targetHost, required this.targetPort}) {
+  ShadowsocksConnection({
+    required this.socket,
+    required this.cipher,
+    required this.targetHost,
+    required this.targetPort,
+  }) {
     // Listen to socket and decrypt incoming data
     socket.listen(
       (data) {

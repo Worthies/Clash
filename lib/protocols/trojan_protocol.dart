@@ -14,13 +14,19 @@ class TrojanProtocol {
   TrojanProtocol({required this.node, required this.password});
 
   /// Connect to target through Trojan proxy
-  Future<TrojanConnection> connect(String targetHost, int targetPort, {bool isUdp = false}) async {
+  Future<TrojanConnection> connect(
+    String targetHost,
+    int targetPort, {
+    bool isUdp = false,
+  }) async {
     if (node.host == null || node.port == null) {
       throw Exception('Invalid proxy node: missing host or port');
     }
 
     // Connect to Trojan server over TLS (Trojan expects TLS)
-    final sniHost = (node.sni != null && node.sni!.isNotEmpty) ? node.sni! : node.host!;
+    final sniHost = (node.sni != null && node.sni!.isNotEmpty)
+        ? node.sni!
+        : node.host!;
 
     // Connect raw socket first (use IP or host as provided)
     final rawSocket = await Socket.connect(node.host!, node.port!);
@@ -48,7 +54,11 @@ class TrojanProtocol {
 
     secureSocket.add(request);
 
-    return TrojanConnection(socket: secureSocket, targetHost: targetHost, targetPort: targetPort);
+    return TrojanConnection(
+      socket: secureSocket,
+      targetHost: targetHost,
+      targetPort: targetPort,
+    );
   }
 
   /// Build Trojan request packet
@@ -97,7 +107,8 @@ class TrojanProtocol {
   String _hashPassword(String password) {
     final bytes = utf8.encode(password);
     final digest = sha224.convert(bytes);
-    return digest.toString(); // SHA-224 produces 56-character lowercase hex string
+    return digest
+        .toString(); // SHA-224 produces 56-character lowercase hex string
   }
 
   bool _isIPv4(String address) {
@@ -132,7 +143,11 @@ class TrojanConnection {
   final int targetPort;
   bool _closed = false;
 
-  TrojanConnection({required this.socket, required this.targetHost, required this.targetPort});
+  TrojanConnection({
+    required this.socket,
+    required this.targetHost,
+    required this.targetPort,
+  });
 
   bool get isClosed => _closed;
 

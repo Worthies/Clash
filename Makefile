@@ -311,6 +311,17 @@ build-linux:
 		$(call log_warning,Linux builds only supported on Linux); \
 	fi
 
+.PHONY: package-deb
+package-deb: build-linux
+	@$(call log_info,Packaging Debian .deb using tools/package_deb.sh)
+	@mkdir -p $(output_dir)/deb
+	@chmod +x tools/package_deb.sh || true
+	@# Default to git describe for version; caller can set VERSION env var
+	@VERSION=$${VERSION:-$$(git describe --tags --always --dirty 2>/dev/null || echo "nightly-$$(date -u +%Y%m%d%H%M)" )} && \
+		./tools/package_deb.sh "$${VERSION}" && \
+		mv build/deb/*.deb $(output_dir)/deb/ || true
+	@$(call log_success,Debian package created in $(output_dir)/deb)
+
 .PHONY: build-android
 build-android:
 	@$(call log_info,Building Android APK and AAB...); \

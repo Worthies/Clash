@@ -17,7 +17,7 @@ class SettingsPage extends StatelessWidget {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 16),
-            
+
             // System Proxy
             Card(
               child: SwitchListTile(
@@ -29,7 +29,7 @@ class SettingsPage extends StatelessWidget {
                 },
               ),
             ),
-            
+
             // Allow LAN
             Card(
               child: SwitchListTile(
@@ -41,7 +41,7 @@ class SettingsPage extends StatelessWidget {
                 },
               ),
             ),
-            
+
             // Mixed Port
             Card(
               child: ListTile(
@@ -51,14 +51,11 @@ class SettingsPage extends StatelessWidget {
                 onTap: () => _showPortDialog(context, state),
               ),
             ),
-            
+
             const SizedBox(height: 24),
-            Text(
-              'About',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
+            Text('About', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 16),
-            
+
             Card(
               child: Column(
                 children: [
@@ -91,7 +88,7 @@ class SettingsPage extends StatelessWidget {
 
   void _showPortDialog(BuildContext context, ClashState state) {
     final controller = TextEditingController(text: state.mixedPort.toString());
-    
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(

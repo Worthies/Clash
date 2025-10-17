@@ -122,7 +122,11 @@ class Socks5Handler {
       }
       targetPort = (portBytes[0] << 8) | portBytes[1];
 
-      return Socks5Request(targetHost: targetHost, targetPort: targetPort, addressType: atyp);
+      return Socks5Request(
+        targetHost: targetHost,
+        targetPort: targetPort,
+        addressType: atyp,
+      );
     } catch (e) {
       _sendReply(0x01); // General failure
       return null;
@@ -171,7 +175,11 @@ class Socks5Request {
   final int targetPort;
   final int addressType;
 
-  Socks5Request({required this.targetHost, required this.targetPort, required this.addressType});
+  Socks5Request({
+    required this.targetHost,
+    required this.targetPort,
+    required this.addressType,
+  });
 }
 
 /// SOCKS5 Handler with pre-buffered data
@@ -226,7 +234,11 @@ class Socks5HandlerWithStream extends Socks5Handler {
   final Stream<List<int>> socketStream;
   int bufferOffset = 0;
 
-  Socks5HandlerWithStream(super.clientSocket, this.initialBuffer, this.socketStream);
+  Socks5HandlerWithStream(
+    super.clientSocket,
+    this.initialBuffer,
+    this.socketStream,
+  );
 
   /// Get remaining data that wasn't consumed during handshake
   List<int> getRemainingData() {
