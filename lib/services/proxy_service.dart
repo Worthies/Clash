@@ -13,6 +13,7 @@ class ProxyService {
   ServerSocket? _localServer;
   final int _localPort;
   bool _isRunning = false;
+  bool _allowLan = false;
 
   // Traffic statistics (cumulative bytes)
   int _totalUpload = 0;
@@ -24,10 +25,12 @@ class ProxyService {
 
   ProxyService({
     int localPort = 1080,
+    bool allowLan = false,
     void Function(int, int)? onTrafficUpdate,
     void Function(Connection)? onConnectionStart,
     void Function(String)? onConnectionEnd,
   }) : _localPort = localPort,
+       _allowLan = allowLan,
        _onTrafficUpdate = onTrafficUpdate,
        _onConnectionStart = onConnectionStart,
        _onConnectionEnd = onConnectionEnd;
@@ -35,6 +38,21 @@ class ProxyService {
   bool get isRunning => _isRunning;
   ProxyNode? get activeNode => _activeNode;
   int get localPort => _localPort;
+  bool get allowLan => _allowLan;
+
+  /// Update allow LAN setting and restart server if running
+  Future<void> setAllowLan(bool value) async {
+    if (_allowLan == value) return;
+
+    _allowLan = value;
+
+    // Restart server if currently running to apply new bind address
+    if (_isRunning && _activeNode != null) {
+      final node = _activeNode!;
+      await disconnect();
+      await connect(node);
+    }
+  }
 
   /// Start local proxy server and connect through the specified proxy node
   Future<bool> connect(ProxyNode node) async {
@@ -93,10 +111,12 @@ class ProxyService {
   /// Start local SOCKS5/HTTP proxy server
   Future<void> _startLocalServer() async {
     try {
-      _localServer = await ServerSocket.bind(
-        InternetAddress.loopbackIPv4,
-        _localPort,
-      );
+      // Bind to 0.0.0.0 if allow LAN is enabled, otherwise 127.0.0.1
+      final bindAddress = _allowLan
+          ? InternetAddress.anyIPv4
+          : InternetAddress.loopbackIPv4;
+
+      _localServer = await ServerSocket.bind(bindAddress, _localPort);
 
       _localServer!.listen((Socket clientSocket) async {
         await _handleClientConnection(clientSocket);

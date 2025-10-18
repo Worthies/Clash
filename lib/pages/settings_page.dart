@@ -20,13 +20,73 @@ class SettingsPage extends StatelessWidget {
 
             // System Proxy
             Card(
-              child: SwitchListTile(
-                title: const Text('System Proxy'),
-                subtitle: const Text('Use system proxy settings'),
-                value: state.systemProxy,
-                onChanged: (value) {
-                  state.setSystemProxy(value);
-                },
+              child: Column(
+                children: [
+                  SwitchListTile(
+                    title: const Text('System Proxy'),
+                    subtitle: Text(
+                      state.systemProxy
+                          ? 'Enabled: System using ${state.allowLan ? "0.0.0.0" : "127.0.0.1"}:${state.mixedPort}'
+                          : 'Configure system to use this proxy server',
+                    ),
+                    value: state.systemProxy,
+                    onChanged: (value) {
+                      state.setSystemProxy(value);
+                    },
+                  ),
+                  if (state.systemProxy)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.check_circle_outline,
+                                size: 16,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'System proxy configured successfully',
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.primary,
+                                      ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                size: 16,
+                                color: Theme.of(context).colorScheme.secondary,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Running applications may need to be restarted to use the proxy',
+                                  style: Theme.of(context).textTheme.bodySmall
+                                      ?.copyWith(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.secondary,
+                                      ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
               ),
             ),
 
@@ -34,7 +94,11 @@ class SettingsPage extends StatelessWidget {
             Card(
               child: SwitchListTile(
                 title: const Text('Allow LAN'),
-                subtitle: const Text('Allow connections from LAN'),
+                subtitle: Text(
+                  state.allowLan
+                      ? 'Listening on 0.0.0.0 (all interfaces)'
+                      : 'Listening on 127.0.0.1 (localhost only)',
+                ),
                 value: state.allowLan,
                 onChanged: (value) {
                   state.setAllowLan(value);

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:system_tray/system_tray.dart';
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, File, Directory, FileMode;
 import 'dart:async';
 import 'dart:ui';
 import 'services/clash_state.dart';
@@ -42,12 +42,30 @@ void main() {
           await windowManager.show();
           await windowManager.focus();
           await windowManager.setPreventClose(true);
+
+          // Set window icon for taskbar (Linux/KDE/GNOME window managers)
+          // Try to find and set the icon from installed location or bundle
+          if (Platform.isLinux) {
+            final iconCandidates = [
+              '/usr/share/pixmaps/clash.png',
+              '/opt/clash/data/flutter_assets/icon.png',
+              'icon.png',
+            ];
+            for (final iconPath in iconCandidates) {
+              try {
+                if (File(iconPath).existsSync()) {
+                  await windowManager.setIcon(iconPath);
+                  break;
+                }
+              } catch (_) {}
+            }
+          }
         });
       }
 
       state = ClashState();
       await state!.init();
-      state!.simulateTraffic();
+      // state!.simulateTraffic();
 
       // Capture Flutter framework errors and add them to app logs
       FlutterError.onError = (FlutterErrorDetails details) {
@@ -141,6 +159,7 @@ class MainPage extends StatefulWidget {
 class _MainPageState extends State<MainPage> with WindowListener {
   int _selectedIndex = 0;
   final SystemTray _systemTray = SystemTray();
+  bool _trayReady = false;
 
   @override
   void initState() {
@@ -156,10 +175,60 @@ class _MainPageState extends State<MainPage> with WindowListener {
   }
 
   Future<void> _initSystemTray() async {
-    String path = Platform.isWindows ? 'icon.png' : 'icon.png';
+    // Resolve a best-effort absolute icon path so the system tray plugin
+    // can find the icon when the app is launched from an installed location
+    // (for example /opt/clash). Fall back to the bundled asset name.
+    String path = 'icon.png';
+    if (!Platform.isWindows) {
+      final exe = Platform.resolvedExecutable;
+      String exeDir;
+      try {
+        exeDir = File(exe).parent.path;
+      } catch (_) {
+        exeDir = '';
+      }
 
-    // Initialize system tray
-    await _systemTray.initSystemTray(title: "Clash", iconPath: path);
+      // Build real candidates (avoid interpolation issues above)
+      final realCandidates = <String>[];
+      if (exeDir.isNotEmpty) {
+        realCandidates.add('$exeDir/data/flutter_assets/icon.png');
+        realCandidates.add('$exeDir/../data/flutter_assets/icon.png');
+      }
+      realCandidates.add('/opt/clash/data/flutter_assets/icon.png');
+      realCandidates.add('/usr/share/pixmaps/clash.png');
+      // last-resort: bundled asset name
+      realCandidates.add('icon.png');
+
+      for (final c in realCandidates) {
+        try {
+          if (File(c).existsSync()) {
+            path = c;
+            break;
+          }
+        } catch (_) {}
+      }
+    }
+
+    // Initialize system tray and log the result
+    bool initOk = false;
+    try {
+      initOk = await _systemTray.initSystemTray(
+        title: 'Clash',
+        iconPath: path,
+        toolTip: 'Clash',
+      );
+      _trayReady = initOk;
+    } catch (e, s) {
+      // also report the Flutter error channel for visibility
+      FlutterError.reportError(
+        FlutterErrorDetails(exception: e, stack: s as StackTrace?),
+      );
+    }
+    if (!initOk) {
+      FlutterError.reportError(
+        const FlutterErrorDetails(exception: 'Init system tray failed'),
+      );
+    }
 
     // Setup context menu
     final Menu menu = Menu();
@@ -180,7 +249,30 @@ class _MainPageState extends State<MainPage> with WindowListener {
       if (eventName == kSystemTrayEventClick) {
         _showWindow();
       } else if (eventName == kSystemTrayEventRightClick) {
-        _systemTray.popUpContextMenu();
+        // Call popUpContextMenu asynchronously and guard errors — some
+        // platforms may report a GDK device assertion when the native
+        // call is made synchronously from the event thread. Running the
+        // popup in a microtask and catching exceptions avoids crashing
+        // the app and suppresses the GTK assertion.
+        Future.microtask(() async {
+          try {
+            await _systemTray.popUpContextMenu();
+          } catch (e, s) {
+            debugPrint('system_tray: popUpContextMenu failed: $e\n$s');
+            // also write a short log file for post-mortem
+            try {
+              final logDir = Directory(
+                '${Platform.environment['HOME']}/.cache/clash',
+              );
+              if (!logDir.existsSync()) logDir.createSync(recursive: true);
+              final f = File('${logDir.path}/clash_tray.log');
+              f.writeAsStringSync(
+                '${DateTime.now().toIso8601String()} popUpContextMenu failed: $e\n',
+                mode: FileMode.append,
+              );
+            } catch (_) {}
+          }
+        });
       }
     });
   }
@@ -192,6 +284,28 @@ class _MainPageState extends State<MainPage> with WindowListener {
 
   Future<void> _hideToTray() async {
     await windowManager.hide();
+    // If the tray wasn't ready when the app started, try to initialize it now
+    // so a user click on the tray can restore the window.
+    if (!_trayReady) {
+      // attempt initialization with retries in background
+      _ensureTrayReady(retries: 5, delay: const Duration(seconds: 1));
+    }
+  }
+
+  // Try to initialize the tray several times with a delay. Runs in background
+  // and sets _trayReady when successful.
+  Future<void> _ensureTrayReady({
+    int retries = 3,
+    Duration delay = const Duration(seconds: 1),
+  }) async {
+    for (int i = 0; i < retries; i++) {
+      try {
+        if (_trayReady) return;
+        await _initSystemTray();
+        if (_trayReady) return;
+      } catch (_) {}
+      await Future.delayed(delay);
+    }
   }
 
   Future<void> _exitApp() async {
@@ -202,10 +316,7 @@ class _MainPageState extends State<MainPage> with WindowListener {
   @override
   void onWindowClose() async {
     // Hide to tray instead of closing
-    bool isPreventClose = await windowManager.isPreventClose();
-    if (isPreventClose) {
-      _hideToTray();
-    }
+    _hideToTray();
   }
 
   final List<Widget> _pages = const [

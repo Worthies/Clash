@@ -16,6 +16,7 @@ skip_pub_get := false
 generate_icons := false
 open := false
 archive_name :=
+version :=
 
 # Mirror URLs
 flutter_mirror_default := https://storage.googleapis.com/flutter_infra_release/releases
@@ -317,7 +318,7 @@ package-deb: build-linux
 	@mkdir -p $(output_dir)/deb
 	@chmod +x tools/package_deb.sh || true
 	@# Default to git describe for version; caller can set VERSION env var
-	@VERSION=$${VERSION:-$$(git describe --tags --always --dirty 2>/dev/null || echo "nightly-$$(date -u +%Y%m%d%H%M)" )} && \
+	@VERSION=$${version:-$$(git describe --tags --always --dirty 2>/dev/null || echo "nightly-$$(date -u +%Y%m%d%H%M)" )} && \
 		./tools/package_deb.sh "$${VERSION}" && \
 		mv build/deb/*.deb $(output_dir)/deb/ || true
 	@$(call log_success,Debian package created in $(output_dir)/deb)

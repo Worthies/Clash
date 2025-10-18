@@ -8,6 +8,7 @@ import 'package:yaml/yaml.dart' as yaml;
 
 import '../models/clash_models.dart';
 import 'proxy_service.dart';
+import 'system_proxy.dart';
 
 class ClashState extends ChangeNotifier {
   // Proxy service for handling connections
@@ -45,6 +46,7 @@ class ClashState extends ChangeNotifier {
   ClashState() {
     _proxyService = ProxyService(
       localPort: _mixedPort,
+      allowLan: _allowLan,
       onTrafficUpdate: (upload, download) {
         updateTraffic(upload, download);
       },
@@ -477,18 +479,98 @@ class ClashState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void setSystemProxy(bool value) {
+  void setSystemProxy(bool value) async {
     _systemProxy = value;
+
+    if (value) {
+      // Enable system proxy
+      final address = _allowLan ? '0.0.0.0' : '127.0.0.1';
+      final success = await SystemProxyService.setSystemProxy(
+        address,
+        _mixedPort,
+      );
+
+      if (success) {
+        addLog(
+          LogEntry(
+            level: 'INFO',
+            message: 'System proxy enabled: $address:$_mixedPort',
+            time: DateTime.now(),
+          ),
+        );
+      } else {
+        addLog(
+          LogEntry(
+            level: 'WARNING',
+            message:
+                'Failed to set system proxy (may require admin privileges)',
+            time: DateTime.now(),
+          ),
+        );
+      }
+    } else {
+      // Disable system proxy
+      final success = await SystemProxyService.clearSystemProxy();
+
+      if (success) {
+        addLog(
+          LogEntry(
+            level: 'INFO',
+            message: 'System proxy disabled',
+            time: DateTime.now(),
+          ),
+        );
+      } else {
+        addLog(
+          LogEntry(
+            level: 'WARNING',
+            message: 'Failed to clear system proxy',
+            time: DateTime.now(),
+          ),
+        );
+      }
+    }
+
     notifyListeners();
   }
 
-  void setAllowLan(bool value) {
+  void setAllowLan(bool value) async {
     _allowLan = value;
+    // Update proxy service and restart if necessary
+    await _proxyService.setAllowLan(value);
+
+    // Update system proxy if it's enabled
+    if (_systemProxy) {
+      final address = _allowLan ? '0.0.0.0' : '127.0.0.1';
+      await SystemProxyService.setSystemProxy(address, _mixedPort);
+      addLog(
+        LogEntry(
+          level: 'INFO',
+          message: 'System proxy updated: $address:$_mixedPort',
+          time: DateTime.now(),
+        ),
+      );
+    }
+
     notifyListeners();
   }
 
-  void setMixedPort(int port) {
+  void setMixedPort(int port) async {
     _mixedPort = port;
+
+    // Update system proxy if it's enabled
+    if (_systemProxy) {
+      final address = _allowLan ? '0.0.0.0' : '127.0.0.1';
+      await SystemProxyService.setSystemProxy(address, port);
+      addLog(
+        LogEntry(
+          level: 'INFO',
+          message: 'System proxy updated: $address:$port',
+          time: DateTime.now(),
+        ),
+      );
+    }
+
     notifyListeners();
   }
 

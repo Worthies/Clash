@@ -18,7 +18,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: 'stable'
+          flutter-version: '3.35.4'
 
       - name: Get dependencies
         run: flutter pub get
@@ -48,7 +48,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: 'stable'
+          flutter-version: '3.35.4'
 
       - name: Get dependencies
         run: flutter pub get
@@ -83,7 +83,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: 'stable'
+          flutter-version: '3.35.4'
 
       - name: Get dependencies
         run: flutter pub get
@@ -117,7 +117,7 @@ jobs:
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: 'stable'
+          flutter-version: '3.35.4'
 
       - name: Get dependencies
         run: flutter pub get

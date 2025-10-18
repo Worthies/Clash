@@ -54,7 +54,7 @@ class HomePage extends StatelessWidget {
               _buildCard(
                 context,
                 'Network Settings',
-                'Mixed Port: ${state.mixedPort}\nAllow LAN: ${state.allowLan ? "Yes" : "No"}',
+                'Listen: ${state.allowLan ? "0.0.0.0" : "127.0.0.1"}:${state.mixedPort}\nAllow LAN: ${state.allowLan ? "Yes" : "No"}',
                 Icons.settings_ethernet,
               ),
 
