@@ -11,6 +11,9 @@
             "program": "lib/main.dart",
             "flutterMode": "debug",
             "deviceId": "linux",
+            "env": {
+                "XDG_CURRENT_DESKTOP": "KDE"
+            }
         }
     ]
 }
