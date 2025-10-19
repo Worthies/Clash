@@ -169,12 +169,16 @@ jobs:
       - name: Prepare release tag
         id: tag
         run: |
-          echo "RELEASE_TAG=nightly-$(date -u +%Y%m%d)" >> $GITHUB_ENV
-          echo "RELEASE_NAME=Nightly build $(date -u +%Y-%m-%d)" >> $GITHUB_ENV
+          echo "RELEASE_TAG=nightly-$GITHUB_SHA-$(date -u +%Y%m%d%H%M)" >> $GITHUB_ENV
+          echo "RELEASE_NAME=Nightly build $GITHUB_SHA $(date -u +%Y%m%d%H%M)" >> $GITHUB_ENV
 
       - name: Show downloaded artifacts
         run: |
           ls -al
+          mv clash_*.deb clash-linux.deb
+          mv clash-windows-*.zip clash-windows.zip
+          mv clash-macos-*.zip clash-macos.zip
+          mv clash-web-*.zip clash-web.zip
 
       - name: Create GitHub release
         id: create_release
@@ -193,7 +197,7 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./clash_*.deb
+          asset_path: ./clash-linux.deb
           asset_name: clash-linux.deb
           asset_content_type: application/vnd.debian.binary-package
         env:
@@ -203,7 +207,7 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./clash-windows-*
+          asset_path: ./clash-windows.zip
           asset_name: clash-windows.zip
           asset_content_type: application/zip
         env:
@@ -213,7 +217,7 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./clash-macos-*
+          asset_path: ./clash-macos.zip
           asset_name: clash-macos.zip
           asset_content_type: application/zip
         env:
@@ -223,7 +227,7 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./clash-web-*
+          asset_path: ./clash-web.zip
           asset_name: clash-web.zip
           asset_content_type: application/zip
         env:
