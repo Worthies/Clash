@@ -169,8 +169,8 @@ jobs:
       - name: Prepare release tag
         id: tag
         run: |
-          echo "RELEASE_TAG=nightly-$GITHUB_SHA-$(date -u +%Y%m%d%H%M)" >> $GITHUB_ENV
-          echo "RELEASE_NAME=Nightly build $GITHUB_SHA $(date -u +%Y%m%d%H%M)" >> $GITHUB_ENV
+          echo "RELEASE_TAG=nightly-$(git rev-parse --short "$GITHUB_SHA")-$(date -u +%Y%m%d%H%M)" >> $GITHUB_ENV
+          echo "RELEASE_NAME=Nightly build $(git rev-parse --short "$GITHUB_SHA") $(date -u +%Y%m%d%H%M)" >> $GITHUB_ENV
 
       - name: Show downloaded artifacts
         run: |
