@@ -139,6 +139,8 @@ Comprehensive documentation is available in the `/docs` directory:
 - **[IMPLEMENTATION.md](IMPLEMENTATION.md)** - Complete feature implementation summary
 - **[UI_DESIGN.md](UI_DESIGN.md)** - Visual design specifications
 - **[COMPARISON.md](COMPARISON.md)** - Feature comparison with clash-verge-rev
+- **[WECHAT_ARTICLE.md](WECHAT_ARTICLE.md)** - Technical article (Chinese) introducing the project
+- **[ARTICLE_SUMMARY.md](ARTICLE_SUMMARY.md)** - Summary of the WeChat article in English
 
 ## 🔧 Configuration
 
