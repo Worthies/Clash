@@ -15,10 +15,7 @@ class ConnectionsPage extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  Text(
-                    'Active Connections: ${state.connections.length}',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
+                  Text('Active Connections: ${state.connections.length}', style: Theme.of(context).textTheme.titleMedium),
                   const Spacer(),
                   ElevatedButton.icon(
                     onPressed: () {
@@ -38,19 +35,14 @@ class ConnectionsPage extends StatelessWidget {
                       itemBuilder: (context, index) {
                         final conn = state.connections[index];
                         return Card(
-                          margin: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 4,
-                          ),
+                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                           child: ExpansionTile(
                             leading: Icon(
-                              conn.network == 'TCP'
-                                  ? Icons.swap_horiz
-                                  : Icons.swap_vert,
+                              conn.network == 'TCP' ? Icons.swap_horiz : Icons.swap_vert,
                               color: Theme.of(context).colorScheme.primary,
                             ),
-                            title: Text(conn.host),
-                            subtitle: Text('${conn.type} • ${conn.network}'),
+                            // title: Text(conn.host),
+                            title: Text('${conn.type} • ${conn.network} → ${conn.host}'),
                             children: [
                               Padding(
                                 padding: const EdgeInsets.all(16),
@@ -58,22 +50,10 @@ class ConnectionsPage extends StatelessWidget {
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
                                     _buildInfoRow('Source', conn.source),
-                                    _buildInfoRow(
-                                      'Destination',
-                                      conn.destination,
-                                    ),
-                                    _buildInfoRow(
-                                      'Upload',
-                                      _formatBytes(conn.upload),
-                                    ),
-                                    _buildInfoRow(
-                                      'Download',
-                                      _formatBytes(conn.download),
-                                    ),
-                                    _buildInfoRow(
-                                      'Start Time',
-                                      _formatTime(conn.startTime),
-                                    ),
+                                    _buildInfoRow('Destination', conn.destination),
+                                    _buildInfoRow('Upload', _formatBytes(conn.upload)),
+                                    _buildInfoRow('Download', _formatBytes(conn.download)),
+                                    _buildInfoRow('Start Time', _formatTime(conn.startTime)),
                                   ],
                                 ),
                               ),
@@ -96,10 +76,7 @@ class ConnectionsPage extends StatelessWidget {
         children: [
           SizedBox(
             width: 100,
-            child: Text(
-              '$label:',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
+            child: Text('$label:', style: const TextStyle(fontWeight: FontWeight.bold)),
           ),
           Expanded(child: Text(value)),
         ],

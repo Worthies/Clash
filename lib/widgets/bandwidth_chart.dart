@@ -6,11 +6,7 @@ class BandwidthChart extends StatefulWidget {
   final int uploadBytes;
   final int downloadBytes;
 
-  const BandwidthChart({
-    super.key,
-    required this.uploadBytes,
-    required this.downloadBytes,
-  });
+  const BandwidthChart({super.key, required this.uploadBytes, required this.downloadBytes});
 
   @override
   State<BandwidthChart> createState() => _BandwidthChartState();
@@ -63,20 +59,12 @@ class _BandwidthChartState extends State<BandwidthChart> {
     // Calculate bandwidth in bytes/sec and clamp negatives to zero
     final rawUpload = (widget.uploadBytes - _lastUploadBytes) / elapsed;
     final rawDownload = (widget.downloadBytes - _lastDownloadBytes) / elapsed;
-    final uploadBandwidth = rawUpload.isFinite && rawUpload > 0
-        ? rawUpload
-        : 0.0;
-    final downloadBandwidth = rawDownload.isFinite && rawDownload > 0
-        ? rawDownload
-        : 0.0;
+    final uploadBandwidth = rawUpload.isFinite && rawUpload > 0 ? rawUpload : 0.0;
+    final downloadBandwidth = rawDownload.isFinite && rawDownload > 0 ? rawDownload : 0.0;
 
     // If no difference in bytes, push zero to keep chart moving and show 0 B/s
-    final uploadToPush = (widget.uploadBytes - _lastUploadBytes) == 0
-        ? 0.0
-        : uploadBandwidth;
-    final downloadToPush = (widget.downloadBytes - _lastDownloadBytes) == 0
-        ? 0.0
-        : downloadBandwidth;
+    final uploadToPush = (widget.uploadBytes - _lastUploadBytes) == 0 ? 0.0 : uploadBandwidth;
+    final downloadToPush = (widget.downloadBytes - _lastDownloadBytes) == 0 ? 0.0 : downloadBandwidth;
 
     _uploadSamples.add(uploadToPush);
     _downloadSamples.add(downloadToPush);
@@ -110,9 +98,7 @@ class _BandwidthChartState extends State<BandwidthChart> {
   @override
   Widget build(BuildContext context) {
     final uploadCurrent = _uploadSamples.isNotEmpty ? _uploadSamples.last : 0.0;
-    final downloadCurrent = _downloadSamples.isNotEmpty
-        ? _downloadSamples.last
-        : 0.0;
+    final downloadCurrent = _downloadSamples.isNotEmpty ? _downloadSamples.last : 0.0;
 
     // Center legend and chart horizontally and vertically
     return Center(
@@ -126,30 +112,46 @@ class _BandwidthChartState extends State<BandwidthChart> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(width: 12, height: 2, color: Colors.green),
-                    const SizedBox(width: 6),
-                    Text(
-                      '↑ ${_formatBandwidth(uploadCurrent)}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                SizedBox(
+                  width: 120,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text('↑', style: TextStyle(fontSize: 12)),
+                      const SizedBox(width: 4),
+                      Container(width: 12, height: 2, color: Colors.green),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _formatBandwidth(uploadCurrent),
+                          style: Theme.of(context).textTheme.bodySmall,
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 6),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(width: 12, height: 2, color: Colors.blue),
-                    const SizedBox(width: 6),
-                    Text(
-                      '↓ ${_formatBandwidth(downloadCurrent)}',
-                      style: Theme.of(context).textTheme.bodySmall,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
+                SizedBox(
+                  width: 120,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Text('↓', style: TextStyle(fontSize: 12)),
+                      const SizedBox(width: 4),
+                      Container(width: 12, height: 2, color: Colors.blue),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _formatBandwidth(downloadCurrent),
+                          style: Theme.of(context).textTheme.bodySmall,
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -179,11 +181,7 @@ class _BandwidthChartPainter extends CustomPainter {
   final List<double> downloadSamples;
   final bool isDark;
 
-  _BandwidthChartPainter({
-    required this.uploadSamples,
-    required this.downloadSamples,
-    required this.isDark,
-  });
+  _BandwidthChartPainter({required this.uploadSamples, required this.downloadSamples, required this.isDark});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -264,7 +262,6 @@ class _BandwidthChartPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_BandwidthChartPainter oldDelegate) {
-    return uploadSamples != oldDelegate.uploadSamples ||
-        downloadSamples != oldDelegate.downloadSamples;
+    return uploadSamples != oldDelegate.uploadSamples || downloadSamples != oldDelegate.downloadSamples;
   }
 }

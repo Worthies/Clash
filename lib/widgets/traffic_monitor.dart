@@ -19,24 +19,9 @@ class TrafficMonitor extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceAround,
             children: [
-              _buildStatItem(
-                context,
-                stats.formatBytes(stats.upload),
-                Icons.upload,
-                Colors.blue,
-              ),
-              _buildStatItem(
-                context,
-                stats.formatBytes(stats.download),
-                Icons.download,
-                Colors.green,
-              ),
-              _buildStatItem(
-                context,
-                stats.formatBytes(stats.total),
-                Icons.data_usage,
-                Colors.orange,
-              ),
+              _buildStatItem(context, stats.formatBytes(stats.upload), Icons.upload, Colors.blue),
+              _buildStatItem(context, stats.formatBytes(stats.download), Icons.download, Colors.green),
+              _buildStatItem(context, stats.formatBytes(stats.total), Icons.data_usage, Colors.orange),
             ],
           ),
         );
@@ -44,24 +29,18 @@ class TrafficMonitor extends StatelessWidget {
     );
   }
 
-  Widget _buildStatItem(
-    BuildContext context,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
+  Widget _buildStatItem(BuildContext context, String value, IconData icon, Color color) {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        const Padding(padding: EdgeInsets.all(12)),
         Icon(icon, color: color, size: 24),
-        const SizedBox(height: 4),
+        const SizedBox(height: 6),
         Text(
           value,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold, color: color),
         ),
+        const Padding(padding: EdgeInsets.all(12)),
       ],
     );
   }
