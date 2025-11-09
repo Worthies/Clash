@@ -13,7 +13,7 @@
             "deviceId": "linux",
             "env": {
                 "XDG_CURRENT_DESKTOP": "KDE"
-            }
+            },
         }
     ]
 }

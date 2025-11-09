@@ -91,9 +91,7 @@ class ProxyService {
   /// Start periodic traffic monitoring
   void _startTrafficMonitoring() {
     _trafficUpdateTimer?.cancel();
-    _trafficUpdateTimer = Timer.periodic(const Duration(milliseconds: 500), (
-      _,
-    ) {
+    _trafficUpdateTimer = Timer.periodic(const Duration(milliseconds: 1000), (_) {
       _onTrafficUpdate?.call(_totalUpload, _totalDownload);
     });
   }
@@ -112,9 +110,7 @@ class ProxyService {
   Future<void> _startLocalServer() async {
     try {
       // Bind to 0.0.0.0 if allow LAN is enabled, otherwise 127.0.0.1
-      final bindAddress = _allowLan
-          ? InternetAddress.anyIPv4
-          : InternetAddress.loopbackIPv4;
+      final bindAddress = _allowLan ? InternetAddress.anyIPv4 : InternetAddress.loopbackIPv4;
 
       _localServer = await ServerSocket.bind(bindAddress, _localPort);
 
@@ -176,11 +172,7 @@ class ProxyService {
   }
 
   /// Handle SOCKS5 protocol with buffered initial data
-  Future<void> _handleSocks5WithBuffer(
-    Socket clientSocket,
-    List<int> initialBuffer,
-    Stream<List<int>> socketStream,
-  ) async {
+  Future<void> _handleSocks5WithBuffer(Socket clientSocket, List<int> initialBuffer, Stream<List<int>> socketStream) async {
     if (_activeNode == null) {
       clientSocket.destroy();
       return;
@@ -188,11 +180,7 @@ class ProxyService {
 
     try {
       // Create handler with buffered data and stream
-      final handler = Socks5HandlerWithStream(
-        clientSocket,
-        initialBuffer,
-        socketStream,
-      );
+      final handler = Socks5HandlerWithStream(clientSocket, initialBuffer, socketStream);
       final request = await handler.handleHandshake();
 
       if (request == null) {
@@ -217,24 +205,14 @@ class ProxyService {
       );
 
       // Connect through proxy - pass the controller's stream for data forwarding
-      await _connectThroughProxy(
-        clientSocket,
-        dataController.stream,
-        remainingData,
-        request.targetHost,
-        request.targetPort,
-      );
+      await _connectThroughProxy(clientSocket, dataController.stream, remainingData, request.targetHost, request.targetPort);
     } catch (e) {
       clientSocket.destroy();
     }
   }
 
   /// Handle HTTP CONNECT protocol connection
-  Future<void> _handleHttpProtocol(
-    Socket clientSocket,
-    List<int> initialBuffer,
-    Stream<List<int>> socketStream,
-  ) async {
+  Future<void> _handleHttpProtocol(Socket clientSocket, List<int> initialBuffer, Stream<List<int>> socketStream) async {
     if (_activeNode == null) {
       clientSocket.destroy();
       return;
@@ -311,9 +289,7 @@ class ProxyService {
 
         if (headersEnd != -1) {
           // Found end of headers, any data after is payload (shouldn't be any for CONNECT)
-          final remainingData = buffer.length > headersEnd + 4
-              ? buffer.sublist(headersEnd + 4)
-              : <int>[];
+          final remainingData = buffer.length > headersEnd + 4 ? buffer.sublist(headersEnd + 4) : <int>[];
 
           // Send 200 Connection Established
           clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
@@ -329,13 +305,7 @@ class ProxyService {
           );
 
           // Now forward traffic through the proxy using the controller's stream
-          await _connectThroughProxy(
-            clientSocket,
-            dataController.stream,
-            remainingData,
-            targetHost,
-            targetPort,
-          );
+          await _connectThroughProxy(clientSocket, dataController.stream, remainingData, targetHost, targetPort);
           return;
         }
 
@@ -374,29 +344,11 @@ class ProxyService {
       final nodeType = _activeNode!.type.toLowerCase();
 
       if (nodeType.contains('trojan')) {
-        await _connectTrojan(
-          clientSocket,
-          clientStream,
-          initialData,
-          targetHost,
-          targetPort,
-        );
+        await _connectTrojan(clientSocket, clientStream, initialData, targetHost, targetPort);
       } else if (nodeType.contains('ss') || nodeType.contains('shadowsocks')) {
-        await _connectShadowsocks(
-          clientSocket,
-          clientStream,
-          initialData,
-          targetHost,
-          targetPort,
-        );
+        await _connectShadowsocks(clientSocket, clientStream, initialData, targetHost, targetPort);
       } else if (nodeType.contains('vmess')) {
-        await _connectVMess(
-          clientSocket,
-          clientStream,
-          initialData,
-          targetHost,
-          targetPort,
-        );
+        await _connectVMess(clientSocket, clientStream, initialData, targetHost, targetPort);
       } else {
         clientSocket.destroy();
       }
@@ -448,10 +400,8 @@ class ProxyService {
           network: 'TCP',
           type: 'HTTP',
           host: '$targetHost:$targetPort',
-          source:
-              '${clientSocket.remoteAddress.address}:${clientSocket.remotePort}',
-          destination:
-              '${connection.socket.remoteAddress.address}:${connection.socket.remotePort}',
+          source: '${clientSocket.remoteAddress.address}:${clientSocket.remotePort}',
+          destination: '${connection.socket.remoteAddress.address}:${connection.socket.remotePort}',
           upload: 0,
           download: 0,
           startTime: DateTime.now(),
@@ -470,18 +420,14 @@ class ProxyService {
           connection.close();
           // notify connection end
           try {
-            _onConnectionEnd?.call(
-              '${clientSocket.remoteAddress.address}:${clientSocket.remotePort}',
-            );
+            _onConnectionEnd?.call('${clientSocket.remoteAddress.address}:${clientSocket.remotePort}');
           } catch (_) {}
         },
         onError: (_) {
           clientSocket.destroy();
           connection.close();
           try {
-            _onConnectionEnd?.call(
-              '${clientSocket.remoteAddress.address}:${clientSocket.remotePort}',
-            );
+            _onConnectionEnd?.call('${clientSocket.remoteAddress.address}:${clientSocket.remotePort}');
           } catch (_) {}
         },
       );
@@ -508,19 +454,13 @@ class ProxyService {
         throw Exception('Shadowsocks node missing password');
       }
 
-      final ss = ShadowsocksProtocol(
-        node: _activeNode!,
-        password: password,
-        method: cipher,
-      );
+      final ss = ShadowsocksProtocol(node: _activeNode!, password: password, method: cipher);
       final connection = await ss.connect(targetHost, targetPort);
 
       // Send any initial data immediately (data after SOCKS5 handshake)
       if (initialData.isNotEmpty) {
         await Future.delayed(const Duration(milliseconds: 50));
-        final encrypted = connection.cipher.encrypt(
-          Uint8List.fromList(initialData),
-        );
+        final encrypted = connection.cipher.encrypt(Uint8List.fromList(initialData));
         connection.socket.add(encrypted);
         _trackUpload(encrypted.length);
       }
@@ -543,10 +483,8 @@ class ProxyService {
           network: 'TCP',
           type: 'HTTP',
           host: '$targetHost:$targetPort',
-          source:
-              '${clientSocket.remoteAddress.address}:${clientSocket.remotePort}',
-          destination:
-              '${connection.socket.remoteAddress.address}:${connection.socket.remotePort}',
+          source: '${clientSocket.remoteAddress.address}:${clientSocket.remotePort}',
+          destination: '${connection.socket.remoteAddress.address}:${connection.socket.remotePort}',
           upload: 0,
           download: 0,
           startTime: DateTime.now(),
@@ -564,18 +502,14 @@ class ProxyService {
           clientSocket.destroy();
           connection.close();
           try {
-            _onConnectionEnd?.call(
-              '${clientSocket.remoteAddress.address}:${clientSocket.remotePort}',
-            );
+            _onConnectionEnd?.call('${clientSocket.remoteAddress.address}:${clientSocket.remotePort}');
           } catch (_) {}
         },
         onError: (_) {
           clientSocket.destroy();
           connection.close();
           try {
-            _onConnectionEnd?.call(
-              '${clientSocket.remoteAddress.address}:${clientSocket.remotePort}',
-            );
+            _onConnectionEnd?.call('${clientSocket.remoteAddress.address}:${clientSocket.remotePort}');
           } catch (_) {}
         },
       );
@@ -595,9 +529,7 @@ class ProxyService {
   ) async {
     // VMess is complex - recommend using FFI to v2ray-core
     clientSocket.destroy();
-    throw UnimplementedError(
-      'VMess protocol requires FFI integration with v2ray-core',
-    );
+    throw UnimplementedError('VMess protocol requires FFI integration with v2ray-core');
   }
 
   /// Get connection statistics

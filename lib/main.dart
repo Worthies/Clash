@@ -31,7 +31,7 @@ void main() {
 
         WindowOptions windowOptions = const WindowOptions(
           size: Size(1200, 800),
-          minimumSize: Size(800, 600),
+          minimumSize: Size(900, 600),
           center: true,
           backgroundColor: Colors.transparent,
           skipTaskbar: false,
@@ -46,11 +46,7 @@ void main() {
           // Set window icon for taskbar (Linux/KDE/GNOME window managers)
           // Try to find and set the icon from installed location or bundle
           if (Platform.isLinux) {
-            final iconCandidates = [
-              '/usr/share/pixmaps/clash.png',
-              '/opt/clash/data/flutter_assets/icon.png',
-              'icon.png',
-            ];
+            final iconCandidates = ['/usr/share/pixmaps/clash.png', '/opt/clash/data/flutter_assets/icon.png', 'icon.png'];
             for (final iconPath in iconCandidates) {
               try {
                 if (File(iconPath).existsSync()) {
@@ -73,8 +69,7 @@ void main() {
           state?.addLog(
             LogEntry(
               level: 'ERROR',
-              message:
-                  'Flutter error: ${details.exceptionAsString()}\n${details.stack ?? ''}',
+              message: 'Flutter error: ${details.exceptionAsString()}\n${details.stack ?? ''}',
               time: DateTime.now(),
             ),
           );
@@ -83,20 +78,12 @@ void main() {
       };
 
       // Run app inside the same zone
-      runApp(
-        ChangeNotifierProvider(create: (_) => state!, child: const ClashApp()),
-      );
+      runApp(ChangeNotifierProvider(create: (_) => state!, child: const ClashApp()));
 
       // Platform-level errors (engine) - return true to indicate handled
       PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
         try {
-          state?.addLog(
-            LogEntry(
-              level: 'ERROR',
-              message: 'Platform error: $error\n$stack',
-              time: DateTime.now(),
-            ),
-          );
+          state?.addLog(LogEntry(level: 'ERROR', message: 'Platform error: $error\n$stack', time: DateTime.now()));
         } catch (_) {}
         return true;
       };
@@ -104,18 +91,10 @@ void main() {
     (error, stack) {
       // Zone-level uncaught errors — prefer logging into state if available
       try {
-        state?.addLog(
-          LogEntry(
-            level: 'ERROR',
-            message: 'Uncaught error: $error\n$stack',
-            time: DateTime.now(),
-          ),
-        );
+        state?.addLog(LogEntry(level: 'ERROR', message: 'Uncaught error: $error\n$stack', time: DateTime.now()));
       } catch (_) {
         // Fallback to console if state is not available
-        FlutterError.reportError(
-          FlutterErrorDetails(exception: error, stack: stack),
-        );
+        FlutterError.reportError(FlutterErrorDetails(exception: error, stack: stack));
       }
     },
   );
@@ -130,15 +109,9 @@ class ClashApp extends StatelessWidget {
       builder: (context, state, _) {
         return MaterialApp(
           title: 'Clash',
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue),
-            useMaterial3: true,
-          ),
+          theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue), useMaterial3: true),
           darkTheme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.blue,
-              brightness: Brightness.dark,
-            ),
+            colorScheme: ColorScheme.fromSeed(seedColor: Colors.blue, brightness: Brightness.dark),
             useMaterial3: true,
           ),
           themeMode: state.themeMode,
@@ -212,31 +185,20 @@ class _MainPageState extends State<MainPage> with WindowListener {
     // Initialize system tray and log the result
     bool initOk = false;
     try {
-      initOk = await _systemTray.initSystemTray(
-        title: 'Clash',
-        iconPath: path,
-        toolTip: 'Clash',
-      );
+      initOk = await _systemTray.initSystemTray(title: 'Clash', iconPath: path, toolTip: 'Clash');
       _trayReady = initOk;
     } catch (e, s) {
       // also report the Flutter error channel for visibility
-      FlutterError.reportError(
-        FlutterErrorDetails(exception: e, stack: s as StackTrace?),
-      );
+      FlutterError.reportError(FlutterErrorDetails(exception: e, stack: s as StackTrace?));
     }
     if (!initOk) {
-      FlutterError.reportError(
-        const FlutterErrorDetails(exception: 'Init system tray failed'),
-      );
+      FlutterError.reportError(const FlutterErrorDetails(exception: 'Init system tray failed'));
     }
 
     // Setup context menu
     final Menu menu = Menu();
     await menu.buildFrom([
-      MenuItemLabel(
-        label: 'Show Clash',
-        onClicked: (menuItem) => _showWindow(),
-      ),
+      MenuItemLabel(label: 'Show Clash', onClicked: (menuItem) => _showWindow()),
       MenuSeparator(),
       MenuItemLabel(label: 'Exit', onClicked: (menuItem) => _exitApp()),
     ]);
@@ -261,15 +223,10 @@ class _MainPageState extends State<MainPage> with WindowListener {
             debugPrint('system_tray: popUpContextMenu failed: $e\n$s');
             // also write a short log file for post-mortem
             try {
-              final logDir = Directory(
-                '${Platform.environment['HOME']}/.cache/clash',
-              );
+              final logDir = Directory('${Platform.environment['HOME']}/.cache/clash');
               if (!logDir.existsSync()) logDir.createSync(recursive: true);
               final f = File('${logDir.path}/clash_tray.log');
-              f.writeAsStringSync(
-                '${DateTime.now().toIso8601String()} popUpContextMenu failed: $e\n',
-                mode: FileMode.append,
-              );
+              f.writeAsStringSync('${DateTime.now().toIso8601String()} popUpContextMenu failed: $e\n', mode: FileMode.append);
             } catch (_) {}
           }
         });
@@ -294,10 +251,7 @@ class _MainPageState extends State<MainPage> with WindowListener {
 
   // Try to initialize the tray several times with a delay. Runs in background
   // and sets _trayReady when successful.
-  Future<void> _ensureTrayReady({
-    int retries = 3,
-    Duration delay = const Duration(seconds: 1),
-  }) async {
+  Future<void> _ensureTrayReady({int retries = 3, Duration delay = const Duration(seconds: 1)}) async {
     for (int i = 0; i < retries; i++) {
       try {
         if (_trayReady) return;
@@ -331,52 +285,19 @@ class _MainPageState extends State<MainPage> with WindowListener {
   ];
 
   final List<NavigationDestination> _destinations = const [
-    NavigationDestination(
-      icon: Icon(Icons.home_outlined),
-      selectedIcon: Icon(Icons.home),
-      label: 'Home',
-    ),
-    NavigationDestination(
-      icon: Icon(Icons.router_outlined),
-      selectedIcon: Icon(Icons.router),
-      label: 'Proxies',
-    ),
-    NavigationDestination(
-      icon: Icon(Icons.article_outlined),
-      selectedIcon: Icon(Icons.article),
-      label: 'Profiles',
-    ),
-    NavigationDestination(
-      icon: Icon(Icons.swap_horiz_outlined),
-      selectedIcon: Icon(Icons.swap_horiz),
-      label: 'Connections',
-    ),
-    NavigationDestination(
-      icon: Icon(Icons.rule_outlined),
-      selectedIcon: Icon(Icons.rule),
-      label: 'Rules',
-    ),
-    NavigationDestination(
-      icon: Icon(Icons.description_outlined),
-      selectedIcon: Icon(Icons.description),
-      label: 'Logs',
-    ),
-    NavigationDestination(
-      icon: Icon(Icons.speed_outlined),
-      selectedIcon: Icon(Icons.speed),
-      label: 'Test',
-    ),
-    NavigationDestination(
-      icon: Icon(Icons.settings_outlined),
-      selectedIcon: Icon(Icons.settings),
-      label: 'Settings',
-    ),
+    NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
+    NavigationDestination(icon: Icon(Icons.router_outlined), selectedIcon: Icon(Icons.router), label: 'Proxies'),
+    NavigationDestination(icon: Icon(Icons.article_outlined), selectedIcon: Icon(Icons.article), label: 'Profiles'),
+    NavigationDestination(icon: Icon(Icons.swap_horiz_outlined), selectedIcon: Icon(Icons.swap_horiz), label: 'Connections'),
+    NavigationDestination(icon: Icon(Icons.rule_outlined), selectedIcon: Icon(Icons.rule), label: 'Rules'),
+    NavigationDestination(icon: Icon(Icons.description_outlined), selectedIcon: Icon(Icons.description), label: 'Logs'),
+    NavigationDestination(icon: Icon(Icons.speed_outlined), selectedIcon: Icon(Icons.speed), label: 'Test'),
+    NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),
   ];
 
   @override
   Widget build(BuildContext context) {
-    final isDesktop =
-        Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+    final isDesktop = Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
     if (isDesktop) {
       // Desktop layout: left navigation rail with traffic panel at bottom-left
@@ -389,7 +310,7 @@ class _MainPageState extends State<MainPage> with WindowListener {
                 children: [
                   // Left rail + traffic panel stacked vertically
                   Container(
-                    width: 200,
+                    width: 220,
                     color: Theme.of(context).colorScheme.surface,
                     child: Column(
                       children: [
@@ -408,6 +329,7 @@ class _MainPageState extends State<MainPage> with WindowListener {
                             destinations: _destinations
                                 .map(
                                   (d) => NavigationRailDestination(
+                                    padding: const EdgeInsets.all(4),
                                     indicatorColor: Colors.blue,
                                     icon: d.icon,
                                     selectedIcon: d.selectedIcon,
@@ -420,20 +342,16 @@ class _MainPageState extends State<MainPage> with WindowListener {
 
                         // Traffic panel (left-bottom) with bandwidth chart
                         Padding(
-                          padding: const EdgeInsets.all(4.0),
+                          padding: const EdgeInsets.all(8.0),
                           child: Consumer<ClashState>(
                             builder: (context, state, _) {
                               return SizedBox(
                                 height: 120,
                                 child: Card(
-                                  margin: EdgeInsets.zero,
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(6.0),
-                                    child: BandwidthChart(
-                                      uploadBytes: state.trafficStats.upload,
-                                      downloadBytes:
-                                          state.trafficStats.download,
-                                    ),
+                                  margin: const EdgeInsets.all(4),
+                                  child: BandwidthChart(
+                                    uploadBytes: state.trafficStats.upload,
+                                    downloadBytes: state.trafficStats.download,
                                   ),
                                 ),
                               );
@@ -476,12 +394,10 @@ class _MainPageState extends State<MainPage> with WindowListener {
 
   Widget _buildCustomTitleBar(BuildContext context) {
     return Container(
-      height: 40,
+      height: 60,
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(color: Theme.of(context).dividerColor, width: 1),
-        ),
+        border: Border(bottom: BorderSide(color: Theme.of(context).dividerColor, width: 1)),
       ),
       child: Row(
         children: [
@@ -506,12 +422,7 @@ class _MainPageState extends State<MainPage> with WindowListener {
                   children: [
                     Image.asset('icon.png', width: 20, height: 20),
                     const SizedBox(width: 8),
-                    Text(
-                      'Clash',
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    Text('Clash', style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
@@ -524,10 +435,7 @@ class _MainPageState extends State<MainPage> with WindowListener {
               builder: (context, state, _) {
                 final isDark = state.themeMode == ThemeMode.dark;
                 return IconButton(
-                  icon: Icon(
-                    isDark ? Icons.light_mode : Icons.dark_mode,
-                    size: 16,
-                  ),
+                  icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode, size: 16),
                   onPressed: () {
                     state.toggleTheme();
                   },
@@ -567,22 +475,14 @@ class _MainPageState extends State<MainPage> with WindowListener {
     );
   }
 
-  Widget _buildWindowButton({
-    required IconData icon,
-    required VoidCallback onPressed,
-    bool isClose = false,
-  }) {
+  Widget _buildWindowButton({required IconData icon, required VoidCallback onPressed, bool isClose = false}) {
     return SizedBox(
-      width: 46,
-      height: 40,
+      width: 60,
+      height: 60,
       child: InkWell(
         onTap: onPressed,
         hoverColor: isClose ? Colors.red.withValues(alpha: 0.9) : null,
-        child: Icon(
-          icon,
-          size: 16,
-          color: isClose ? Colors.red.shade400 : null,
-        ),
+        child: Icon(icon, size: 16, color: isClose ? Colors.red.shade400 : null),
       ),
     );
   }

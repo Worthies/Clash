@@ -15,10 +15,7 @@ class LogsPage extends StatelessWidget {
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  Text(
-                    'Logs (${state.logs.length})',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
+                  Text('Logs (${state.logs.length})', style: Theme.of(context).textTheme.titleMedium),
                   const Spacer(),
                   ElevatedButton.icon(
                     onPressed: () {
@@ -38,18 +35,12 @@ class LogsPage extends StatelessWidget {
                       itemBuilder: (context, index) {
                         final log = state.logs[index];
                         return Card(
-                          margin: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 4,
-                          ),
+                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                           child: ListTile(
-                            leading: Icon(
-                              _getLogIcon(log.level),
-                              color: _getLogColor(log.level),
-                            ),
-                            title: Text(log.message),
-                            subtitle: Text(
-                              '${log.level} • ${_formatTime(log.time)}',
+                            leading: Icon(_getLogIcon(log.level), color: _getLogColor(log.level)),
+                            // title: Text(log.message),
+                            title: Text(
+                              '${log.level} • ${_formatTime(log.time)} : ${log.message}',
                               style: TextStyle(color: _getLogColor(log.level)),
                             ),
                           ),
