@@ -60,8 +60,8 @@ class Socks5Handler {
         return null;
       }
 
-      // We only support CONNECT command (0x01)
-      if (cmd != 0x01) {
+      // We support CONNECT (0x01) and UDP ASSOCIATE (0x03) commands
+      if (cmd != 0x01 && cmd != 0x03) {
         _sendReply(0x07); // Command not supported
         return null;
       }
@@ -122,11 +122,7 @@ class Socks5Handler {
       }
       targetPort = (portBytes[0] << 8) | portBytes[1];
 
-      return Socks5Request(
-        targetHost: targetHost,
-        targetPort: targetPort,
-        addressType: atyp,
-      );
+      return Socks5Request(cmd: cmd, targetHost: targetHost, targetPort: targetPort, addressType: atyp);
     } catch (e) {
       _sendReply(0x01); // General failure
       return null;
@@ -136,6 +132,30 @@ class Socks5Handler {
   /// Send SOCKS5 reply
   void sendSuccessReply() {
     _sendReply(0x00); // Succeeded
+  }
+
+  /// Send SOCKS5 reply with bind address and port (for UDP ASSOCIATE)
+  void sendReplyWithBind(InternetAddress bindAddr, int bindPort) {
+    // Build reply: VER | REP | RSV | ATYP | BND.ADDR | BND.PORT
+    final List<int> parts = [];
+    parts.addAll([0x05, 0x00, 0x00]); // VER, REP=0, RSV
+
+    if (bindAddr.type == InternetAddressType.IPv4) {
+      parts.add(0x01); // ATYP IPv4
+      parts.addAll(bindAddr.rawAddress);
+    } else if (bindAddr.type == InternetAddressType.IPv6) {
+      parts.add(0x04); // ATYP IPv6
+      parts.addAll(bindAddr.rawAddress);
+    } else {
+      // Fallback to IPv4 0.0.0.0
+      parts.add(0x01);
+      parts.addAll([0, 0, 0, 0]);
+    }
+
+    parts.add((bindPort >> 8) & 0xFF);
+    parts.add(bindPort & 0xFF);
+
+    clientSocket.add(Uint8List.fromList(parts));
   }
 
   /// Send SOCKS5 reply with status code
@@ -171,15 +191,12 @@ class Socks5Handler {
 
 /// SOCKS5 request information
 class Socks5Request {
+  final int cmd;
   final String targetHost;
   final int targetPort;
   final int addressType;
 
-  Socks5Request({
-    required this.targetHost,
-    required this.targetPort,
-    required this.addressType,
-  });
+  Socks5Request({required this.cmd, required this.targetHost, required this.targetPort, required this.addressType});
 }
 
 /// SOCKS5 Handler with pre-buffered data
@@ -234,11 +251,7 @@ class Socks5HandlerWithStream extends Socks5Handler {
   final Stream<List<int>> socketStream;
   int bufferOffset = 0;
 
-  Socks5HandlerWithStream(
-    super.clientSocket,
-    this.initialBuffer,
-    this.socketStream,
-  );
+  Socks5HandlerWithStream(super.clientSocket, this.initialBuffer, this.socketStream);
 
   /// Get remaining data that wasn't consumed during handshake
   List<int> getRemainingData() {

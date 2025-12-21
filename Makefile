@@ -386,7 +386,7 @@ build-web:
 define create_archive
 	$(call log_info,Creating $(1) archive...); \
 	archive_name="$(if $(archive_name),$(archive_name)-$(1).$(2),$(project_name)-$(1)-$(mode).$(2))"; \
-	archive_path="$(archive_dir)/$$archive_name"; \
+	archive_path="$(shell pwd)/$(archive_dir)/$$archive_name"; \
 	mkdir -p $(archive_dir); \
 	case "$(2)" in \
 		zip) (cd $(output_dir)/$(1) && zip -r "$$archive_path" .) ;; \
@@ -438,3 +438,55 @@ launch:
 	else \
 		$(call log_info,Skipping launch (use open=yes to enable)); \
 	fi
+
+
+###############################################################
+# Prebuilt tun2socks c-shared libraries for Android, this is a legacy solution for reference only
+###############################################################
+.PHONY: tun2socks
+tun2socks:
+	@$(call log_info,Building tun2socks c-shared libraries for Android (tag v3.2.6))
+	@# Ensure the tun2socks submodule is initialized and checked out to the requested tag
+	@cd tun2socks && git fetch --tags --quiet || true
+	@cd tun2socks && git checkout 4127937ea7c450a5230b273f406c9410acec2be7 || { $(call log_warning,Failed to checkout tag v3.2.6; continuing with current HEAD); }
+	@$(call log_info,Copying cgo export file into tun2socks submodule)
+	@cp -vf android/app/src/main/jniLibs/cexport.go tun2socks/cexport.go
+	@mv -vf tun2socks/main.go tun2socks/main.go.bak 2>/dev/null || true
+	@cd tun2socks && go mod tidy
+	@# Locate an NDK directory
+	@NDK_DIR=$$( ( [ -n "$$ANDROID_NDK_HOME" ] && echo "$$ANDROID_NDK_HOME" ) || ( [ -n "$$ANDROID_NDK_ROOT" ] && echo "$$ANDROID_NDK_ROOT" ) || ( [ -d "$$HOME/Android/Sdk/ndk" ] && echo "$$HOME/Android/Sdk/ndk/$$(ls -1 $$HOME/Android/Sdk/ndk | tail -n1)" ) || ( echo "ERROR: Android DNK not found. Set ANDROID_NDK_HOME or ANDROID_NDK_ROOT, or install NDK to $$HOME/Android/Sdk/ndk" > 2 ; exit 1 ) ); \
+	if [ -z "$$NDK_DIR" ]; then echo "$(RED)ERROR: Android NDK not found. Set ANDROID_NDK_HOME or ANDROID_NDK_ROOT, or install NDK to $$HOME/Android/Sdk/ndk$(NC)"; exit 1; fi; \
+	API=21; \
+	ABIS="arm64-v8a armeabi-v7a x86 x86_64"; \
+	for ABI in $$ABIS; do \
+		case $$ABI in \
+			arm64-v8a) GOARCH=arm64; GOARM=; CC_PREFIX=aarch64-linux-android;; \
+			armeabi-v7a) GOARCH=arm; GOARM=7; CC_PREFIX=armv7a-linux-androideabi;; \
+			x86) GOARCH=386; GOARM=; CC_PREFIX=i686-linux-android;; \
+			x86_64) GOARCH=amd64; GOARM=; CC_PREFIX=x86_64-linux-android;; \
+		esac; \
+		CC=$$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin/$$CC_PREFIX$$API-clang; \
+		if [ ! -x "$$CC" ]; then echo "$(YELLOW)[WARNING]$(NC) CC not found: $$CC"; exit 1; fi; \
+		$(call log_info,Building for $$ABI (GOARCH=$$GOARCH CC=$$CC NDK=$$NDK_DIR)) ; \
+		export CC=$$CC; export GOOS=android; export GOARCH=$$GOARCH; export CGO_ENABLED=1; if [ -n "$$GOARM" ]; then export GOARM=$$GOARM; fi; \
+		mkdir -p tun2socks/build/$$ABI; \
+		(cd tun2socks && go build -v -trimpath -ldflags "-s -w" -buildmode=c-shared -o build/$$ABI/libtun2socks.so ./cexport.go) || { echo "$(RED)Build failed for $$ABI$(NC)"; exit 1; }; \
+		mkdir -p android/app/src/main/jniLibs/$$ABI; \
+		cp -vf tun2socks/build/$$ABI/libtun2socks.so android/app/src/main/jniLibs/$$ABI/libtun2socks.so; \
+		JNI_SRC="android/app/src/main/jni/tun2socks.c"; \
+		if [ -f "$$JNI_SRC" ]; then \
+			$(call log_info,Compiling JNI wrapper for $$ABI); \
+			mkdir -p android/app/src/main/jniLibs/$$ABI; \
+			$$CC -shared -fPIC -Wl,--strip-all -I$$NDK_DIR/sysroot/usr/include -I$$NDK_DIR/sysroot/usr/include/$(shell echo $$ABI | sed 's/-.*//') \
+				"$$JNI_SRC" -Landroid/app/src/main/jniLibs/$$ABI -ltun2socks -Wl,-rpath,'$$ORIGIN' -o android/app/src/main/jniLibs/$$ABI/libclashjni.so || { echo "$(RED)Failed to compile JNI wrapper for $$ABI$(NC)"; exit 1; }; \
+			STRIP_BIN=$$NDK_DIR/toolchains/llvm/prebuilt/linux-x86_64/bin/llvm-strip; \
+			if [ -x "$$STRIP_BIN" ]; then \
+				$(call log_info,Stripping JNI wrapper for $$ABI); \
+				"$$STRIP_BIN" --strip-unneeded android/app/src/main/jniLibs/$$ABI/libtun2socks.so || true; \
+				"$$STRIP_BIN" --strip-unneeded android/app/src/main/jniLibs/$$ABI/libclashjni.so || true; \
+			fi; \
+		else \
+			$(call log_warning,JNI source $$JNI_SRC not found; skipping JNI build for $$ABI); \
+		fi; \
+	done; \
+	$(call log_success,Created tun2socks shared libraries and copied to android/app/src/main/jniLibs)

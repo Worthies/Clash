@@ -106,6 +106,28 @@ class SettingsPage extends StatelessWidget {
               ),
             ),
 
+            // Private Rules
+            Card(
+              child: SwitchListTile(
+                title: const Text('Private Rules'),
+                subtitle: Text(
+                  state.privateRulesEnabled
+                      ? 'Enabled — rules are hidden until unlocked'
+                      : 'Disabled — rules are visible to all users',
+                ),
+                value: state.privateRulesEnabled,
+                onChanged: (value) {
+                  if (value) {
+                    // Enable: ask for password (4 chars) and confirmation
+                    _showEnablePrivateRulesDialog(context, state);
+                  } else {
+                    // Disable: ask for password to confirm
+                    _showDisablePrivateRulesDialog(context, state);
+                  }
+                },
+              ),
+            ),
+
             // Mixed Port
             Card(
               child: ListTile(
@@ -179,6 +201,126 @@ class SettingsPage extends StatelessWidget {
               }
             },
             child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEnablePrivateRulesDialog(BuildContext context, ClashState state) {
+    final formKey = GlobalKey<FormState>();
+    final TextEditingController pwController = TextEditingController();
+    final TextEditingController pwConfirm = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Enable Private Rules'),
+        content: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: pwController,
+                obscureText: true,
+                maxLength: 4,
+                decoration: const InputDecoration(
+                  labelText: '4-character password',
+                ),
+                validator: (v) =>
+                    (v == null || v.length != 4) ? 'Enter 4 characters' : null,
+              ),
+              TextFormField(
+                controller: pwConfirm,
+                obscureText: true,
+                maxLength: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Confirm password',
+                ),
+                validator: (v) =>
+                    (v != pwController.text) ? 'Passwords do not match' : null,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+              if (formKey.currentState!.validate()) {
+                final ok = await state.setPrivateRules(
+                  true,
+                  password: pwController.text,
+                );
+                if (ok) {
+                  navigator.pop();
+                  messenger.showSnackBar(
+                    const SnackBar(content: Text('Private Rules enabled')),
+                  );
+                } else {
+                  messenger.showSnackBar(
+                    const SnackBar(
+                      content: Text('Failed to enable Private Rules'),
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Enable'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDisablePrivateRulesDialog(BuildContext context, ClashState state) {
+    final TextEditingController pwController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Disable Private Rules'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Enter password to disable Private Rules'),
+            TextFormField(
+              controller: pwController,
+              obscureText: true,
+              maxLength: 4,
+              decoration: const InputDecoration(labelText: 'Password'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final navigator = Navigator.of(context);
+              final messenger = ScaffoldMessenger.of(context);
+              final ok = await state.setPrivateRules(
+                false,
+                password: pwController.text,
+              );
+              if (ok) {
+                navigator.pop();
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Private Rules disabled')),
+                );
+              } else {
+                messenger.showSnackBar(
+                  const SnackBar(content: Text('Password incorrect')),
+                );
+              }
+            },
+            child: const Text('Disable'),
           ),
         ],
       ),

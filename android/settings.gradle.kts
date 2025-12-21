@@ -1,3 +1,27 @@
+// Read local.properties early and apply any proxy settings there as JVM system properties so
+// Gradle tooling (pluginManagement, dependency resolution) can use the configured proxy.
+run {
+    val local = java.util.Properties()
+    val lp = file("local.properties")
+    if (lp.exists()) {
+        lp.inputStream().use { local.load(it) }
+        listOf("http", "https").forEach { proto ->
+            val hostKey = "systemProp.$proto.proxyHost"
+            val portKey = "systemProp.$proto.proxyPort"
+            val host = local.getProperty(hostKey)
+            val port = local.getProperty(portKey)
+            if (!host.isNullOrBlank()) {
+                System.setProperty("$proto.proxyHost", host)
+                println("settings.gradle.kts: applied $proto.proxyHost=$host from local.properties")
+            }
+            if (!port.isNullOrBlank()) {
+                System.setProperty("$proto.proxyPort", port)
+                println("settings.gradle.kts: applied $proto.proxyPort=$port from local.properties")
+            }
+        }
+    }
+}
+
 pluginManagement {
     val flutterSdkPath =
         run {
@@ -24,3 +48,6 @@ plugins {
 }
 
 include(":app")
+
+// Include vpn4j as a composite build (platform-independent module)
+// includeBuild("../vpn4j")

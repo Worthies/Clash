@@ -44,16 +44,36 @@ void main() {
           await windowManager.setPreventClose(true);
 
           // Set window icon for taskbar (Linux/KDE/GNOME window managers)
-          // Try to find and set the icon from installed location or bundle
+          // Prefer non-alpha / opaque variants of the tray icon to avoid
+          // transparent/empty rectangles in some desktop setups (IBus/fcitx
+          // interaction). Fall back to system pixmaps and bundled icon.
           if (Platform.isLinux) {
-            final iconCandidates = ['/usr/share/pixmaps/clash.png', '/opt/clash/data/flutter_assets/icon.png', 'icon.png'];
+            final cwd = Directory.current.path;
+            String exeDir = '';
+            try {
+              exeDir = File(Platform.resolvedExecutable).parent.path;
+            } catch (_) {}
+
+            // For Cinnamon: use a single, known-good icon with no alpha.
+            // Keep a couple of fallbacks for installed/system locations.
+            final iconCandidates = <String>[
+              if (exeDir.isNotEmpty) '$exeDir/data/flutter_assets/assets/taskbar_icon_noalpha.png',
+              '$cwd/assets/taskbar_icon_noalpha.png',
+              '/usr/share/pixmaps/com.github.worthies.clash.png',
+              '/usr/share/pixmaps/clash.png',
+              '/opt/clash/data/flutter_assets/icon.png',
+              '$cwd/icon.png',
+            ];
             for (final iconPath in iconCandidates) {
               try {
                 if (File(iconPath).existsSync()) {
                   await windowManager.setIcon(iconPath);
+                  debugPrint('Set window icon from $iconPath');
                   break;
                 }
-              } catch (_) {}
+              } catch (e) {
+                debugPrint('Failed to set window icon from $iconPath: $e');
+              }
             }
           }
         });
@@ -138,7 +158,10 @@ class _MainPageState extends State<MainPage> with WindowListener {
   void initState() {
     super.initState();
     windowManager.addListener(this);
-    _initSystemTray();
+    // Only initialize system tray on desktop platforms
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      _initSystemTray();
+    }
   }
 
   @override
@@ -151,6 +174,8 @@ class _MainPageState extends State<MainPage> with WindowListener {
     // Resolve a best-effort absolute icon path so the system tray plugin
     // can find the icon when the app is launched from an installed location
     // (for example /opt/clash). Fall back to the bundled asset name.
+    // For Cinnamon and other desktop environments, prefer smaller icons (24x24, 32x32)
+    // with simpler color formats to avoid transparency rendering issues.
     String path = 'icon.png';
     if (!Platform.isWindows) {
       final exe = Platform.resolvedExecutable;
@@ -162,49 +187,103 @@ class _MainPageState extends State<MainPage> with WindowListener {
       }
 
       // Build real candidates (avoid interpolation issues above)
+      // Priority: exeDir/currentDir (prefers running bundle) > local assets > system icons > installed dir
       final realCandidates = <String>[];
+
+      // If executable directory is known, prefer its bundled assets first
       if (exeDir.isNotEmpty) {
-        realCandidates.add('$exeDir/data/flutter_assets/icon.png');
-        realCandidates.add('$exeDir/../data/flutter_assets/icon.png');
+        // Prefer opaque variants first for better compatibility
+        realCandidates.add('$exeDir/data/flutter_assets/assets/icon.png');
+        realCandidates.add('$exeDir/../data/flutter_assets/assets/icon.png');
       }
-      realCandidates.add('/opt/clash/data/flutter_assets/icon.png');
+
+      // Try current working directory next (for direct run from bundle dir)
+      final currentDir = Directory.current.path;
+      // Prefer opaque variants in current dir
+      realCandidates.add('$currentDir/data/flutter_assets/assets/icon.png');
+      realCandidates.add('$currentDir/assets/icon.png');
+
+      // Prefer smaller icon sizes for system tray (better compatibility with Cinnamon)
+      realCandidates.add('/usr/share/icons/hicolor/24x24/apps/com.github.worthies.clash.png');
+      realCandidates.add('/usr/share/icons/hicolor/24x24/apps/clash.png');
+      realCandidates.add('/usr/share/icons/hicolor/32x32/apps/com.github.worthies.clash.png');
+      realCandidates.add('/usr/share/icons/hicolor/32x32/apps/clash.png');
+      realCandidates.add('/usr/share/icons/hicolor/48x48/apps/com.github.worthies.clash.png');
+      realCandidates.add('/usr/share/icons/hicolor/48x48/apps/clash.png');
+
+      // Standard pixmaps location (common for tray icons)
+      realCandidates.add('/usr/share/pixmaps/com.github.worthies.clash.png');
       realCandidates.add('/usr/share/pixmaps/clash.png');
-      // last-resort: bundled asset name
-      realCandidates.add('icon.png');
+
+      // Installed app directory /opt and fallback
+      realCandidates.add('/opt/clash/data/flutter_assets/assets/icon.png');
+      realCandidates.add('/opt/clash/data/flutter_assets/icon.png');
 
       for (final c in realCandidates) {
         try {
           if (File(c).existsSync()) {
-            path = c;
+            // Ensure we use absolute path for system_tray plugin
+            path = File(c).absolute.path;
+            debugPrint('System tray: Found icon at: $path');
             break;
+          } else {
+            debugPrint('System tray: Icon not found at: $c');
           }
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('System tray: Error checking path $c: $e');
+        }
       }
     }
 
     // Initialize system tray and log the result
     bool initOk = false;
     try {
+      // Debug: Log the icon path being used
+      debugPrint('System tray: Attempting to initialize with icon path: $path');
+
+      // For Cinnamon/GNOME, ensure SNI (Status Notifier Item) protocol is available
+      // by setting XDG_CURRENT_DESKTOP if not already set
+      if (Platform.isLinux && Platform.environment['XDG_CURRENT_DESKTOP'] == null) {
+        final desktop = Platform.environment['DESKTOP_SESSION'] ?? '';
+        if (desktop.contains('cinnamon') || desktop.contains('gnome') || desktop.contains('kde') || desktop.contains('plasma')) {
+          debugPrint('System tray: Detected desktop environment: $desktop');
+        }
+      }
+
       initOk = await _systemTray.initSystemTray(title: 'Clash', iconPath: path, toolTip: 'Clash');
       _trayReady = initOk;
+
+      if (initOk) {
+        debugPrint('System tray: Successfully initialized');
+      } else {
+        debugPrint('System tray: Initialization returned false');
+      }
     } catch (e, s) {
+      debugPrint('System tray: Initialization exception: $e\n$s');
       // also report the Flutter error channel for visibility
       FlutterError.reportError(FlutterErrorDetails(exception: e, stack: s as StackTrace?));
     }
     if (!initOk) {
+      debugPrint('System tray: Failed to initialize - will continue without tray');
       FlutterError.reportError(const FlutterErrorDetails(exception: 'Init system tray failed'));
+      return; // Don't continue with menu setup if tray failed to initialize
     }
 
-    // Setup context menu
+    // Setup context menu only if tray initialized successfully
     final Menu menu = Menu();
-    await menu.buildFrom([
-      MenuItemLabel(label: 'Show Clash', onClicked: (menuItem) => _showWindow()),
-      MenuSeparator(),
-      MenuItemLabel(label: 'Exit', onClicked: (menuItem) => _exitApp()),
-    ]);
+    try {
+      await menu.buildFrom([
+        MenuItemLabel(label: 'Show Clash', onClicked: (menuItem) => _showWindow()),
+        MenuSeparator(),
+        MenuItemLabel(label: 'Exit', onClicked: (menuItem) => _exitApp()),
+      ]);
 
-    // Set context menu
-    await _systemTray.setContextMenu(menu);
+      // Set context menu
+      await _systemTray.setContextMenu(menu);
+      debugPrint('System tray: Context menu set successfully');
+    } catch (e, s) {
+      debugPrint('System tray: Failed to set context menu: $e\n$s');
+    }
 
     // Handle system tray click
     _systemTray.registerSystemTrayEventHandler((eventName) {
@@ -275,24 +354,24 @@ class _MainPageState extends State<MainPage> with WindowListener {
 
   final List<Widget> _pages = const [
     HomePage(),
+    SettingsPage(),
     ProxiesPage(),
     ProfilesPage(),
     ConnectionsPage(),
     RulesPage(),
     LogsPage(),
     TestPage(),
-    SettingsPage(),
   ];
 
   final List<NavigationDestination> _destinations = const [
     NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
+    NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),
     NavigationDestination(icon: Icon(Icons.router_outlined), selectedIcon: Icon(Icons.router), label: 'Proxies'),
     NavigationDestination(icon: Icon(Icons.article_outlined), selectedIcon: Icon(Icons.article), label: 'Profiles'),
     NavigationDestination(icon: Icon(Icons.swap_horiz_outlined), selectedIcon: Icon(Icons.swap_horiz), label: 'Connections'),
     NavigationDestination(icon: Icon(Icons.rule_outlined), selectedIcon: Icon(Icons.rule), label: 'Rules'),
     NavigationDestination(icon: Icon(Icons.description_outlined), selectedIcon: Icon(Icons.description), label: 'Logs'),
     NavigationDestination(icon: Icon(Icons.speed_outlined), selectedIcon: Icon(Icons.speed), label: 'Test'),
-    NavigationDestination(icon: Icon(Icons.settings_outlined), selectedIcon: Icon(Icons.settings), label: 'Settings'),
   ];
 
   @override
@@ -372,22 +451,32 @@ class _MainPageState extends State<MainPage> with WindowListener {
       );
     }
 
-    // Mobile/Tablet layout: keep bottom navigation
+    // Mobile/Tablet layout: keep bottom navigation with horizontal scroll
     return Scaffold(
-      body: Column(
-        children: [
-          // no custom title bar on mobile
-          Expanded(child: _pages[_selectedIndex]),
-        ],
+      body: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            // no custom title bar on mobile
+            Expanded(child: _pages[_selectedIndex]),
+          ],
+        ),
       ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        destinations: _destinations,
+      bottomNavigationBar: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: SizedBox(
+          width: (_destinations.length * 90.0).clamp(MediaQuery.of(context).size.width, double.infinity),
+          height: 80,
+          child: NavigationBar(
+            selectedIndex: _selectedIndex,
+            onDestinationSelected: (index) {
+              setState(() {
+                _selectedIndex = index;
+              });
+            },
+            destinations: _destinations,
+          ),
+        ),
       ),
     );
   }
