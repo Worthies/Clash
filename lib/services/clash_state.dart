@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:crypto/crypto.dart';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -40,6 +41,9 @@ class ClashState extends ChangeNotifier {
   static const _kProfilesKey = 'clash_profiles_v1';
   static const _kProxiesKey = 'clash_proxies_v1';
   static const _kGroupsKey = 'clash_groups_v1';
+  static const _kRulesKey = 'clash_rules_v1';
+  static const _kPrivateRulesEnabledKey = 'clash_private_rules_enabled_v1';
+  static const _kPrivateRulesPasswordKey = 'clash_private_rules_password_v1';
   static const _kLastSelectedNodeKey = 'clash_last_selected_node_v1';
   static const _kThemeModeKey = 'clash_theme_mode_v1';
 
@@ -52,24 +56,11 @@ class ClashState extends ChangeNotifier {
       },
       onConnectionStart: (conn) {
         addConnection(conn);
-        addLog(
-          LogEntry(
-            level: 'INFO',
-            message:
-                'Connection started: ${conn.source} -> ${conn.destination}',
-            time: DateTime.now(),
-          ),
-        );
+        addLog(LogEntry(level: 'INFO', message: 'Connection started: ${conn.source} -> ${conn.destination}', time: DateTime.now()));
       },
       onConnectionEnd: (key) {
         // key is source ip:port string; schedule removal after a short delay so UI can show completed connections
-        addLog(
-          LogEntry(
-            level: 'INFO',
-            message: 'Connection ended: $key',
-            time: DateTime.now(),
-          ),
-        );
+        addLog(LogEntry(level: 'INFO', message: 'Connection ended: $key', time: DateTime.now()));
         Future.delayed(const Duration(seconds: 2), () {
           _connections.removeWhere((c) => c.source == key);
           notifyListeners();
@@ -77,24 +68,28 @@ class ClashState extends ChangeNotifier {
       },
     );
 
+    // Set up VPN event handler to receive errors and status from native Android
+    SystemProxyService.initialize();
+    SystemProxyService.onVpnEvent = (event, message) {
+      if (event == 'vpn_error') {
+        addLog(LogEntry(level: 'ERROR', message: 'VPN Error: ${message ?? "Unknown error"}', time: DateTime.now()));
+        _systemProxy = false;
+        notifyListeners();
+      } else if (event == 'vpn_stopped') {
+        addLog(LogEntry(level: 'INFO', message: 'VPN stopped', time: DateTime.now()));
+        _systemProxy = false;
+        notifyListeners();
+      }
+    };
+
     // Ensure there are default items for tests and the UI
     if (_proxies.isEmpty) {
       _proxies.add(ProxyNode(name: 'DIRECT', type: 'DIRECT', protocol: 'TCP'));
-      _proxies.add(
-        ProxyNode(
-          name: 'Test-Node',
-          type: 'ss',
-          host: '127.0.0.1',
-          port: 8388,
-          protocol: 'TCP',
-        ),
-      );
+      _proxies.add(ProxyNode(name: 'Test-Node', type: 'ss', host: '127.0.0.1', port: 8388, protocol: 'TCP'));
     }
 
     if (_rules.isEmpty) {
-      _rules.add(
-        Rule(type: 'DOMAIN-SUFFIX', payload: 'example.com', proxy: 'DIRECT'),
-      );
+      _rules.add(Rule(type: 'DOMAIN-SUFFIX', payload: 'example.com', proxy: 'DIRECT'));
     }
   }
 
@@ -164,8 +159,98 @@ class ClashState extends ChangeNotifier {
     _reconcileProxiesToGroups();
     _sortProxies(save: false);
 
+    // Load saved rules if any
+    final rulesData = prefs.getString(_kRulesKey);
+    if (rulesData != null && rulesData.isNotEmpty) {
+      try {
+        final List<dynamic> list = json.decode(rulesData) as List<dynamic>;
+        _rules.clear();
+        for (final item in list) {
+          if (item is Map<String, dynamic>) {
+            _rules.add(Rule(type: item['type'] ?? '', payload: item['payload'] ?? '', proxy: item['proxy'] ?? ''));
+          } else if (item is Map) {
+            final map = Map<String, dynamic>.from(item);
+            _rules.add(Rule(type: map['type'] ?? '', payload: map['payload'] ?? '', proxy: map['proxy'] ?? ''));
+          }
+        }
+      } catch (_) {
+        // ignore corrupt rules data
+      }
+    }
+
     // Auto-connect to last selected proxy node if available
+
+    // Load protected rules settings
+    try {
+      _privateRulesEnabled = prefs.getBool(_kPrivateRulesEnabledKey) ?? false;
+      final savedHash = prefs.getString(_kPrivateRulesPasswordKey);
+      _privateRulesPasswordHash = savedHash;
+      _privateRulesUnlocked = false;
+    } catch (_) {}
     await _autoConnectLastSelectedNode(prefs);
+  }
+
+  // Private rules protection
+  bool _privateRulesEnabled = false;
+  String? _privateRulesPasswordHash;
+  bool _privateRulesUnlocked = false; // in-memory only
+
+  bool get privateRulesEnabled => _privateRulesEnabled;
+  bool get privateRulesUnlocked => _privateRulesUnlocked;
+
+  /// Set private rules mode. When enabled, [password] must be provided (4 chars).
+  /// When disabled, [password] must match stored password. Returns true on success.
+  Future<bool> setPrivateRules(bool enabled, {String? password}) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (enabled) {
+      if (password == null || password.length != 4) return false;
+      try {
+        // Hash password and store
+        final hashed = sha256.convert(utf8.encode(password)).toString();
+        await prefs.setBool(_kPrivateRulesEnabledKey, true);
+        await prefs.setString(_kPrivateRulesPasswordKey, hashed);
+        _privateRulesPasswordHash = hashed;
+        _privateRulesEnabled = true;
+        _privateRulesUnlocked = true; // immediately unlocked for session
+        notifyListeners();
+        return true;
+      } catch (_) {
+        return false;
+      }
+    } else {
+      // disabling - must provide password
+      if (!(_privateRulesEnabled)) return true;
+      if (password == null) return false;
+      final hashed = sha256.convert(utf8.encode(password)).toString();
+      if (_privateRulesPasswordHash == hashed) {
+        await prefs.setBool(_kPrivateRulesEnabledKey, false);
+        await prefs.remove(_kPrivateRulesPasswordKey);
+        _privateRulesPasswordHash = null;
+        _privateRulesEnabled = false;
+        _privateRulesUnlocked = false;
+        notifyListeners();
+        return true;
+      }
+      return false;
+    }
+  }
+
+  /// Check password and unlock private rules for session if correct
+  Future<bool> unlockPrivateRules(String password) async {
+    if (!_privateRulesEnabled) return false;
+    final hashed = sha256.convert(utf8.encode(password)).toString();
+    if (_privateRulesPasswordHash == hashed) {
+      _privateRulesUnlocked = true;
+      notifyListeners();
+      return true;
+    }
+    return false;
+  }
+
+  /// Forcibly lock (in-memory) private rules until password provided again
+  void lockPrivateRules() {
+    _privateRulesUnlocked = false;
+    notifyListeners();
   }
 
   /// Automatically connect to the last selected proxy node on startup
@@ -186,8 +271,7 @@ class ClashState extends ChangeNotifier {
         return;
       }
 
-      if (node.type.toLowerCase().contains('trojan') &&
-          (node.password == null || node.password!.isEmpty)) {}
+      if (node.type.toLowerCase().contains('trojan') && (node.password == null || node.password!.isEmpty)) {}
 
       // Connect to the proxy
       final success = await connectToProxy(node);
@@ -318,16 +402,11 @@ class ClashState extends ChangeNotifier {
 
   /// Toggle between light and dark themes and persist the selection
   Future<void> toggleTheme() async {
-    _themeMode = (_themeMode == ThemeMode.dark)
-        ? ThemeMode.light
-        : ThemeMode.dark;
+    _themeMode = (_themeMode == ThemeMode.dark) ? ThemeMode.light : ThemeMode.dark;
     notifyListeners();
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(
-        _kThemeModeKey,
-        _themeMode == ThemeMode.dark ? 'dark' : 'light',
-      );
+      await prefs.setString(_kThemeModeKey, _themeMode == ThemeMode.dark ? 'dark' : 'light');
     } catch (_) {}
   }
 
@@ -350,9 +429,7 @@ class ClashState extends ChangeNotifier {
   Future<bool> connectToProxy(ProxyNode node) async {
     try {
       // Check if already connected to this node
-      if (_proxyService.isRunning &&
-          _proxyService.activeNode != null &&
-          _proxyService.activeNode!.name == node.name) {
+      if (_proxyService.isRunning && _proxyService.activeNode != null && _proxyService.activeNode!.name == node.name) {
         selectNode(node);
         notifyListeners();
         return true;
@@ -368,40 +445,49 @@ class ClashState extends ChangeNotifier {
         // Save the last selected node for auto-connect on startup
         await _saveLastSelectedNode(node.name);
 
-        addLog(
-          LogEntry(
-            level: 'INFO',
-            message: 'Connected to proxy: ${node.name} (${node.type})',
-            time: DateTime.now(),
-          ),
-        );
-        addLog(
-          LogEntry(
-            level: 'INFO',
-            message: 'Local proxy listening on 127.0.0.1:$_mixedPort',
-            time: DateTime.now(),
-          ),
-        );
+        // Try to resolve the proxy node host to an IP address so logs show both
+        String hostPort = '';
+        if (node.host != null && node.host!.isNotEmpty) {
+          hostPort = node.port != null ? '${node.host}:${node.port}' : node.host!;
+        }
+
+        String resolvedIp = '';
+        if (node.host != null && node.host!.isNotEmpty) {
+          try {
+            final addrs = await InternetAddress.lookup(node.host!);
+            if (addrs.isNotEmpty) resolvedIp = addrs.first.address;
+          } catch (_) {
+            // ignore resolution failures; we'll just show host if lookup fails
+            resolvedIp = '';
+          }
+        }
+
+        final String connectMsg;
+        if (hostPort.isNotEmpty && resolvedIp.isNotEmpty && resolvedIp != node.host) {
+          connectMsg = 'Connected to proxy: ${node.name} (${node.type}) - $hostPort ($resolvedIp)';
+        } else if (hostPort.isNotEmpty) {
+          connectMsg = 'Connected to proxy: ${node.name} (${node.type}) - $hostPort';
+        } else {
+          connectMsg = 'Connected to proxy: ${node.name} (${node.type})';
+        }
+
+        addLog(LogEntry(level: 'INFO', message: connectMsg, time: DateTime.now()));
+        addLog(LogEntry(level: 'INFO', message: 'Local proxy listening on 127.0.0.1:$_mixedPort', time: DateTime.now()));
+        // If system proxy/VPN is already enabled, inform the VPN service of
+        // the currently connected proxy node so it can protect outbound sockets.
+        if (Platform.isAndroid && _systemProxy) {
+          try {
+            await SystemProxyService.updateProxyNode(node.toJson());
+          } catch (_) {}
+        }
       } else {
-        addLog(
-          LogEntry(
-            level: 'ERROR',
-            message: 'Failed to connect to proxy: ${node.name}',
-            time: DateTime.now(),
-          ),
-        );
+        addLog(LogEntry(level: 'ERROR', message: 'Failed to connect to proxy: ${node.name}', time: DateTime.now()));
       }
 
       notifyListeners();
       return success;
     } catch (e) {
-      addLog(
-        LogEntry(
-          level: 'ERROR',
-          message: 'Error connecting to proxy: $e',
-          time: DateTime.now(),
-        ),
-      );
+      addLog(LogEntry(level: 'ERROR', message: 'Error connecting to proxy: $e', time: DateTime.now()));
       notifyListeners();
       return false;
     }
@@ -420,22 +506,12 @@ class ClashState extends ChangeNotifier {
   /// Disconnect from current proxy
   Future<void> disconnectProxy() async {
     await _proxyService.disconnect();
-    addLog(
-      LogEntry(
-        level: 'INFO',
-        message: 'Disconnected from proxy',
-        time: DateTime.now(),
-      ),
-    );
+    addLog(LogEntry(level: 'INFO', message: 'Disconnected from proxy', time: DateTime.now()));
     notifyListeners();
   }
 
   void updateTraffic(int upload, int download) {
-    _trafficStats = TrafficStats(
-      upload: upload,
-      download: download,
-      total: upload + download,
-    );
+    _trafficStats = TrafficStats(upload: upload, download: download, total: upload + download);
     notifyListeners();
   }
 
@@ -453,6 +529,44 @@ class ClashState extends ChangeNotifier {
 
   void addConnection(Connection connection) {
     _connections.add(connection);
+    notifyListeners();
+  }
+
+  /// Rules management
+  Future<void> _saveRules() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final list = _rules.map((r) => {'type': r.type, 'payload': r.payload, 'proxy': r.proxy}).toList();
+      await prefs.setString(_kRulesKey, json.encode(list));
+    } catch (_) {
+      // ignore storage failures in test env
+    }
+  }
+
+  void addRule(Rule rule) {
+    _rules.add(rule);
+    _saveRules();
+    notifyListeners();
+  }
+
+  void insertRuleAt(int index, Rule rule) {
+    final idx = index.clamp(0, _rules.length);
+    _rules.insert(idx, rule);
+    _saveRules();
+    notifyListeners();
+  }
+
+  void updateRuleAt(int index, Rule rule) {
+    if (index < 0 || index >= _rules.length) return;
+    _rules[index] = rule;
+    _saveRules();
+    notifyListeners();
+  }
+
+  void removeRuleAt(int index) {
+    if (index < 0 || index >= _rules.length) return;
+    _rules.removeAt(index);
+    _saveRules();
     notifyListeners();
   }
 
@@ -483,51 +597,47 @@ class ClashState extends ChangeNotifier {
     _systemProxy = value;
 
     if (value) {
+      // On Android, ensure a proxy is connected before enabling VPN
+      if (Platform.isAndroid) {
+        if (_selectedNode == null || !_proxyService.isRunning) {
+          addLog(
+            LogEntry(
+              level: 'WARNING',
+              message: 'Cannot enable system proxy: Please select and connect to a proxy server first',
+              time: DateTime.now(),
+            ),
+          );
+          _systemProxy = false;
+          notifyListeners();
+          return;
+        }
+      }
+
       // Enable system proxy
       final address = _allowLan ? '0.0.0.0' : '127.0.0.1';
-      final success = await SystemProxyService.setSystemProxy(
+      final payload = _rules.map((r) => {'type': r.type, 'payload': r.payload, 'proxy': r.proxy}).toList();
+      final Map<String, dynamic> res = await SystemProxyService.setSystemProxy(
         address,
         _mixedPort,
+        node: _selectedNode?.toJson(),
+        rules: List<Map<String, dynamic>>.from(payload),
       );
 
-      if (success) {
-        addLog(
-          LogEntry(
-            level: 'INFO',
-            message: 'System proxy enabled: $address:$_mixedPort',
-            time: DateTime.now(),
-          ),
-        );
+      if (res['ok'] == true) {
+        addLog(LogEntry(level: 'INFO', message: 'Proxy enabled: $address:$_mixedPort', time: DateTime.now()));
       } else {
-        addLog(
-          LogEntry(
-            level: 'WARNING',
-            message:
-                'Failed to set system proxy (may require admin privileges)',
-            time: DateTime.now(),
-          ),
-        );
+        final msg = (res['message'] != null) ? res['message'] : 'Failed to enable proxy (may require admin/VPN permissions)';
+        addLog(LogEntry(level: 'WARNING', message: msg, time: DateTime.now()));
+        _systemProxy = false;
       }
     } else {
       // Disable system proxy
-      final success = await SystemProxyService.clearSystemProxy();
+      final Map<String, dynamic> clearRes = await SystemProxyService.clearSystemProxy();
 
-      if (success) {
-        addLog(
-          LogEntry(
-            level: 'INFO',
-            message: 'System proxy disabled',
-            time: DateTime.now(),
-          ),
-        );
+      if (clearRes['ok'] == true) {
+        addLog(LogEntry(level: 'INFO', message: 'Proxy disabled', time: DateTime.now()));
       } else {
-        addLog(
-          LogEntry(
-            level: 'WARNING',
-            message: 'Failed to clear system proxy',
-            time: DateTime.now(),
-          ),
-        );
+        addLog(LogEntry(level: 'WARNING', message: 'Failed to disable proxy', time: DateTime.now()));
       }
     }
 
@@ -542,14 +652,19 @@ class ClashState extends ChangeNotifier {
     // Update system proxy if it's enabled
     if (_systemProxy) {
       final address = _allowLan ? '0.0.0.0' : '127.0.0.1';
-      await SystemProxyService.setSystemProxy(address, _mixedPort);
-      addLog(
-        LogEntry(
-          level: 'INFO',
-          message: 'System proxy updated: $address:$_mixedPort',
-          time: DateTime.now(),
-        ),
+      final payload = _rules.map((r) => {'type': r.type, 'payload': r.payload, 'proxy': r.proxy}).toList();
+      final Map<String, dynamic> res = await SystemProxyService.setSystemProxy(
+        address,
+        _mixedPort,
+        node: _selectedNode?.toJson(),
+        rules: List<Map<String, dynamic>>.from(payload),
       );
+      if (res['ok'] == true) {
+        addLog(LogEntry(level: 'INFO', message: 'System proxy updated: $address:$_mixedPort', time: DateTime.now()));
+      } else {
+        final msg = (res['message'] != null) ? res['message'] : 'Failed to update system proxy';
+        addLog(LogEntry(level: 'WARNING', message: msg, time: DateTime.now()));
+      }
     }
 
     notifyListeners();
@@ -561,14 +676,19 @@ class ClashState extends ChangeNotifier {
     // Update system proxy if it's enabled
     if (_systemProxy) {
       final address = _allowLan ? '0.0.0.0' : '127.0.0.1';
-      await SystemProxyService.setSystemProxy(address, port);
-      addLog(
-        LogEntry(
-          level: 'INFO',
-          message: 'System proxy updated: $address:$port',
-          time: DateTime.now(),
-        ),
+      final payload = _rules.map((r) => {'type': r.type, 'payload': r.payload, 'proxy': r.proxy}).toList();
+      final Map<String, dynamic> res = await SystemProxyService.setSystemProxy(
+        address,
+        port,
+        node: _selectedNode?.toJson(),
+        rules: List<Map<String, dynamic>>.from(payload),
       );
+      if (res['ok'] == true) {
+        addLog(LogEntry(level: 'INFO', message: 'System proxy updated: $address:$port', time: DateTime.now()));
+      } else {
+        final msg = (res['message'] != null) ? res['message'] : 'Failed to update system proxy';
+        addLog(LogEntry(level: 'WARNING', message: msg, time: DateTime.now()));
+      }
     }
 
     notifyListeners();
@@ -586,13 +706,7 @@ class ClashState extends ChangeNotifier {
     _country = 'United States';
 
     // Add some sample logs
-    _logs.add(
-      LogEntry(
-        level: 'INFO',
-        message: 'Clash started successfully',
-        time: DateTime.now(),
-      ),
-    );
+    _logs.add(LogEntry(level: 'INFO', message: 'Clash started successfully', time: DateTime.now()));
 
     notifyListeners();
   }
@@ -623,9 +737,12 @@ class ClashState extends ChangeNotifier {
 
         // Parse proxies
         if (doc is Map && doc['proxies'] is List) {
+          int proxyIndex = 0;
           for (final p in doc['proxies']) {
             if (p is Map) {
-              final name = p['name']?.toString() ?? 'unknown';
+              var name = p['name']?.toString() ?? 'unknown';
+              // Normalize name: trim whitespace and replace tabs/newlines
+              name = name.trim().replaceAll(RegExp(r'[\t\r\n]+'), ' ');
               final type = p['type']?.toString() ?? 'Unknown';
               // Try to extract host/server and port if present
               String? host;
@@ -658,9 +775,7 @@ class ClashState extends ChangeNotifier {
               final udp = p['udp'] as bool?;
               final skipCertVerify = p['skip-cert-verify'] as bool?;
               final plugin = p['plugin']?.toString();
-              final pluginOpts = p['plugin-opts'] is Map
-                  ? Map<String, dynamic>.from(p['plugin-opts'] as Map)
-                  : null;
+              final pluginOpts = p['plugin-opts'] is Map ? Map<String, dynamic>.from(p['plugin-opts'] as Map) : null;
 
               final newNode = ProxyNode(
                 name: name,
@@ -668,6 +783,7 @@ class ClashState extends ChangeNotifier {
                 host: host,
                 port: port,
                 protocol: protocol,
+                originalIndex: proxyIndex,
                 password: password,
                 cipher: cipher,
                 sni: sni,
@@ -681,6 +797,7 @@ class ClashState extends ChangeNotifier {
               if (type.toLowerCase().contains('trojan')) {}
 
               _proxies.add(newNode);
+              proxyIndex++;
             }
           }
         }
@@ -694,18 +811,18 @@ class ClashState extends ChangeNotifier {
               final proxiesList = <String>[];
               if (g['proxies'] is List) {
                 for (final item in g['proxies']) {
-                  proxiesList.add(item?.toString() ?? '');
+                  // Normalize proxy names: trim and replace tabs/newlines
+                  var proxyName = item?.toString() ?? '';
+                  proxyName = proxyName.trim().replaceAll(RegExp(r'[\t\r\n]+'), ' ');
+                  proxiesList.add(proxyName);
                 }
               }
-              final selected = g['selected']?.toString();
-              _groups.add(
-                ProxyGroup(
-                  name: name,
-                  type: type,
-                  proxies: proxiesList,
-                  selected: selected,
-                ),
-              );
+              var selected = g['selected']?.toString();
+              if (selected != null) {
+                // Normalize selected proxy name as well
+                selected = selected.trim().replaceAll(RegExp(r'[\t\r\n]+'), ' ');
+              }
+              _groups.add(ProxyGroup(name: name, type: type, proxies: proxiesList, selected: selected));
             }
           }
         }
@@ -722,13 +839,7 @@ class ClashState extends ChangeNotifier {
               // e.g., DOMAIN-SUFFIX,google.com,DIRECT
               final parts = r.split(',');
               if (parts.length >= 2) {
-                _rules.add(
-                  Rule(
-                    type: parts[0],
-                    payload: parts[1],
-                    proxy: parts.length >= 3 ? parts[2] : '',
-                  ),
-                );
+                _rules.add(Rule(type: parts[0], payload: parts[1], proxy: parts.length >= 3 ? parts[2] : ''));
               }
             }
           }
@@ -737,52 +848,33 @@ class ClashState extends ChangeNotifier {
         // Mark active profile
         for (int i = 0; i < _profiles.length; i++) {
           final p = _profiles[i];
-          _profiles[i] = p.copyWith(
-            isActive: p.name == profile.name && p.url == profile.url,
-          );
+          _profiles[i] = p.copyWith(isActive: p.name == profile.name && p.url == profile.url);
         }
 
         await _saveProfiles();
         await _saveGroups();
+        // Persist rules
+        await _saveRules();
+        // CRITICAL: Persist proxies to storage so they survive app reload
+        await _saveProxies();
         // Reconcile proxies to groups AFTER parsing both
         _reconcileProxiesToGroups();
         _sortProxies(save: true);
         notifyListeners();
       } else {
-        addLog(
-          LogEntry(
-            level: 'ERROR',
-            message: 'Failed to fetch profile: ${resp.statusCode}',
-            time: DateTime.now(),
-          ),
-        );
+        addLog(LogEntry(level: 'ERROR', message: 'Failed to fetch profile: ${resp.statusCode}', time: DateTime.now()));
       }
     } catch (e) {
-      addLog(
-        LogEntry(
-          level: 'ERROR',
-          message: 'Error activating profile: $e',
-          time: DateTime.now(),
-        ),
-      );
+      addLog(LogEntry(level: 'ERROR', message: 'Error activating profile: $e', time: DateTime.now()));
     }
   }
 
   /// Run a single speed/latency test against the proxy node's host:port.
   /// Uses a simple TCP connect timing as a latency approximation.
-  Future<void> runSpeedTest(
-    ProxyNode node, {
-    Duration timeout = const Duration(seconds: 3),
-  }) async {
+  Future<void> runSpeedTest(ProxyNode node, {Duration timeout = const Duration(seconds: 3)}) async {
     if (node.host == null || node.port == null) {
       // cannot test without address
-      addLog(
-        LogEntry(
-          level: 'WARN',
-          message: 'No host/port for ${node.name}',
-          time: DateTime.now(),
-        ),
-      );
+      addLog(LogEntry(level: 'WARN', message: 'No host/port for ${node.name}', time: DateTime.now()));
       return;
     }
 
@@ -802,23 +894,11 @@ class ClashState extends ChangeNotifier {
     } on SocketException catch (e) {
       node.delay = -1;
       node.lastTest = DateTime.now();
-      addLog(
-        LogEntry(
-          level: 'ERROR',
-          message: 'Socket error testing ${node.name}: $e',
-          time: DateTime.now(),
-        ),
-      );
+      addLog(LogEntry(level: 'ERROR', message: 'Socket error testing ${node.name}: $e', time: DateTime.now()));
     } catch (e) {
       node.delay = -1;
       node.lastTest = DateTime.now();
-      addLog(
-        LogEntry(
-          level: 'ERROR',
-          message: 'Error testing ${node.name}: $e',
-          time: DateTime.now(),
-        ),
-      );
+      addLog(LogEntry(level: 'ERROR', message: 'Error testing ${node.name}: $e', time: DateTime.now()));
     } finally {
       _testing.remove(node.name);
       await _saveProxies();
@@ -827,19 +907,14 @@ class ClashState extends ChangeNotifier {
   }
 
   /// Run speed tests for all proxies. Runs in batches to limit concurrency.
-  Future<void> runSpeedTestAll({
-    int concurrency = 8,
-    Duration timeout = const Duration(seconds: 3),
-  }) async {
+  Future<void> runSpeedTestAll({int concurrency = 8, Duration timeout = const Duration(seconds: 3)}) async {
     final List<ProxyNode> list = List.from(_proxies);
     final int total = list.length;
     int idx = 0;
     while (idx < total) {
       final end = (idx + concurrency) < total ? (idx + concurrency) : total;
       final batch = list.sublist(idx, end);
-      await Future.wait(
-        batch.map((node) => runSpeedTest(node, timeout: timeout)),
-      );
+      await Future.wait(batch.map((node) => runSpeedTest(node, timeout: timeout)));
       idx = end;
     }
     // After batch testing, sort and save results
@@ -858,17 +933,12 @@ class ClashState extends ChangeNotifier {
       p.isActive = (p.name == selectedProxy);
     }
     final found = _proxies.where((p) => p.name == selectedProxy).toList();
-    final newSelectedNode = found.isNotEmpty
-        ? found.first
-        : (_proxies.isNotEmpty ? _proxies.first : null);
+    final newSelectedNode = found.isNotEmpty ? found.first : (_proxies.isNotEmpty ? _proxies.first : null);
 
     // Connect to the selected proxy node only if it's different from the current one
     if (newSelectedNode != null && newSelectedNode.host != null) {
       // Check if we need to reconnect (different node or not currently running)
-      final needsReconnect =
-          _selectedNode == null ||
-          _selectedNode!.name != newSelectedNode.name ||
-          !_proxyService.isRunning;
+      final needsReconnect = _selectedNode == null || _selectedNode!.name != newSelectedNode.name || !_proxyService.isRunning;
 
       _selectedNode = newSelectedNode;
 
@@ -883,8 +953,9 @@ class ClashState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Ensure _proxies only contains nodes that are referenced by proxy groups.
+  /// Ensure _proxies has all nodes referenced by proxy groups.
   /// If a group references a name that's not present in _proxies, create a placeholder ProxyNode.
+  /// Keep all parsed proxies even if they're not in any group.
   void _reconcileProxiesToGroups() {
     final referenced = <String>{};
     for (final g in _groups) {
@@ -894,14 +965,27 @@ class ClashState extends ChangeNotifier {
       if (g.selected != null) referenced.add(g.selected!);
     }
 
-    // Remove proxies not referenced
-    _proxies.removeWhere((p) => !referenced.contains(p.name));
+    // Do NOT remove proxies not in groups - keep all parsed proxies
+    // This preserves proxies that may not be in any proxy-group but are in the profile
 
     // Add placeholders for referenced names that are missing
+    final missing = <String>[];
     for (final name in referenced) {
       if (!_proxies.any((p) => p.name == name)) {
+        missing.add(name);
         _proxies.add(ProxyNode(name: name, type: 'Unknown', protocol: 'TCP'));
       }
+    }
+
+    // Log missing proxies for debugging
+    if (missing.isNotEmpty) {
+      addLog(
+        LogEntry(
+          level: 'WARN',
+          message: 'Missing ${missing.length} referenced proxies: ${missing.join(", ")}',
+          time: DateTime.now(),
+        ),
+      );
     }
   }
 }

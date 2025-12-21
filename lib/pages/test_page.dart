@@ -23,19 +23,12 @@ class _TestPageState extends State<TestPage> {
               padding: const EdgeInsets.all(16),
               child: Column(
                 children: [
-                  Text(
-                    'Proxy Speed Test',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
+                  Text('Proxy Speed Test', style: Theme.of(context).textTheme.titleLarge),
                   const SizedBox(height: 16),
                   ElevatedButton.icon(
                     onPressed: _isTesting ? null : () => _runTest(state),
                     icon: _isTesting
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
+                        ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                         : const Icon(Icons.play_arrow),
                     label: Text(_isTesting ? 'Testing...' : 'Start Test'),
                   ),
@@ -44,38 +37,22 @@ class _TestPageState extends State<TestPage> {
             ),
             Expanded(
               child: _testResults.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'Click "Start Test" to begin testing proxies',
-                      ),
-                    )
+                  ? const Center(child: Text('Click "Start Test" to begin testing proxies'))
                   : ListView.builder(
                       itemCount: _testResults.length,
                       itemBuilder: (context, index) {
                         final result = _testResults[index];
                         return Card(
-                          margin: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 4,
-                          ),
+                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                           child: ListTile(
                             leading: Icon(
-                              result['success']
-                                  ? Icons.check_circle
-                                  : Icons.error,
-                              color: result['success']
-                                  ? Colors.green
-                                  : Colors.red,
+                              result['success'] ? Icons.check_circle : Icons.error,
+                              color: result['success'] ? Colors.green : Colors.red,
                             ),
                             title: Text(result['name']),
                             subtitle: Text(result['message']),
                             trailing: result['success']
-                                ? Chip(
-                                    label: Text('${result['delay']}ms'),
-                                    backgroundColor: _getDelayColor(
-                                      result['delay'],
-                                    ),
-                                  )
+                                ? Chip(label: Text('${result['delay']}ms'), backgroundColor: _getDelayColor(result['delay']))
                                 : null,
                           ),
                         );
@@ -89,19 +66,23 @@ class _TestPageState extends State<TestPage> {
   }
 
   Future<void> _runTest(ClashState state) async {
+    if (!mounted) return;
+
     setState(() {
       _isTesting = true;
       _testResults.clear();
     });
 
     for (final proxy in state.proxies) {
+      if (!mounted) return;
+
       await Future.delayed(const Duration(milliseconds: 500));
 
       // Simulate test
-      final delay = proxy.delay > 0
-          ? proxy.delay
-          : (50 + (proxy.name.hashCode % 200));
+      final delay = proxy.delay > 0 ? proxy.delay : (50 + (proxy.name.hashCode % 200));
       final success = delay < 300;
+
+      if (!mounted) return;
 
       setState(() {
         _testResults.add({
@@ -112,6 +93,8 @@ class _TestPageState extends State<TestPage> {
         });
       });
     }
+
+    if (!mounted) return;
 
     setState(() {
       _isTesting = false;

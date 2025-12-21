@@ -24,6 +24,7 @@ class ProxyNode {
   final int? port;
   final String? protocol; // TCP or UDP
   DateTime? lastTest;
+  final int originalIndex; // Original index from profile
 
   // Authentication and encryption
   final String? password;
@@ -45,6 +46,7 @@ class ProxyNode {
     this.port,
     this.protocol,
     this.lastTest,
+    this.originalIndex = -1,
     this.password,
     this.cipher,
     this.sni,
@@ -64,6 +66,7 @@ class ProxyNode {
       'port': port,
       'protocol': protocol,
       'lastTest': lastTest?.toIso8601String(),
+      'originalIndex': originalIndex,
       'password': password,
       'cipher': cipher,
       'sni': sni,
@@ -78,18 +81,15 @@ class ProxyNode {
     return ProxyNode(
       name: json['name'] as String? ?? '',
       type: json['type'] as String? ?? '',
-      delay: (json['delay'] is int)
-          ? json['delay'] as int
-          : int.tryParse(json['delay']?.toString() ?? '') ?? 0,
+      delay: (json['delay'] is int) ? json['delay'] as int : int.tryParse(json['delay']?.toString() ?? '') ?? 0,
       isActive: json['isActive'] as bool? ?? false,
       host: json['host'] as String?,
-      port: json['port'] is int
-          ? json['port'] as int
-          : int.tryParse(json['port']?.toString() ?? ''),
+      port: json['port'] is int ? json['port'] as int : int.tryParse(json['port']?.toString() ?? ''),
       protocol: json['protocol'] as String?,
-      lastTest: DateTime.tryParse(
-        json['lastTest'] as String? ?? DateTime.now().toIso8601String(),
-      ),
+      lastTest: DateTime.tryParse(json['lastTest'] as String? ?? DateTime.now().toIso8601String()),
+      originalIndex: json['originalIndex'] is int
+          ? json['originalIndex'] as int
+          : int.tryParse(json['originalIndex']?.toString() ?? '') ?? -1,
       password: json['password'] as String?,
       cipher: json['cipher'] as String?,
       sni: json['sni'] as String?,
@@ -107,20 +107,10 @@ class ProxyGroup {
   final List<String> proxies;
   String? selected;
 
-  ProxyGroup({
-    required this.name,
-    required this.type,
-    required this.proxies,
-    this.selected,
-  });
+  ProxyGroup({required this.name, required this.type, required this.proxies, this.selected});
 
   Map<String, dynamic> toJson() {
-    return {
-      'name': name,
-      'type': type,
-      'proxies': proxies,
-      'selected': selected,
-    };
+    return {'name': name, 'type': type, 'proxies': proxies, 'selected': selected};
   }
 
   factory ProxyGroup.fromJson(Map<String, dynamic> json) {
@@ -145,39 +135,22 @@ class Profile {
   final DateTime lastUpdate;
   final bool isActive;
 
-  Profile({
-    required this.name,
-    required this.url,
-    required this.lastUpdate,
-    this.isActive = false,
-  });
+  Profile({required this.name, required this.url, required this.lastUpdate, this.isActive = false});
 
   Map<String, dynamic> toJson() {
-    return {
-      'name': name,
-      'url': url,
-      'lastUpdate': lastUpdate.toIso8601String(),
-      'isActive': isActive,
-    };
+    return {'name': name, 'url': url, 'lastUpdate': lastUpdate.toIso8601String(), 'isActive': isActive};
   }
 
   factory Profile.fromJson(Map<String, dynamic> json) {
     return Profile(
       name: json['name'] as String? ?? '',
       url: json['url'] as String? ?? '',
-      lastUpdate:
-          DateTime.tryParse(json['lastUpdate'] as String? ?? '') ??
-          DateTime.now(),
+      lastUpdate: DateTime.tryParse(json['lastUpdate'] as String? ?? '') ?? DateTime.now(),
       isActive: json['isActive'] as bool? ?? false,
     );
   }
 
-  Profile copyWith({
-    String? name,
-    String? url,
-    DateTime? lastUpdate,
-    bool? isActive,
-  }) {
+  Profile copyWith({String? name, String? url, DateTime? lastUpdate, bool? isActive}) {
     return Profile(
       name: name ?? this.name,
       url: url ?? this.url,

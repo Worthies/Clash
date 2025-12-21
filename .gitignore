@@ -7,8 +7,6 @@
 .buildlog/
 .history
 
-
-
 # Flutter repo-specific
 /bin/cache/
 /bin/internal/bootstrap.bat
@@ -118,3 +116,10 @@ app.*.symbols
 !/packages/flutter_tools/test/data/dart_dependencies_test/**/.packages
 !/dev/ci/**/Gemfile.lock
 **/nohup.out
+
+**/libleaf
+**/libleaf.so
+
+.vscode/
+shadowsocksr-android/
+ClashForAndroid/

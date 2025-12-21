@@ -126,3 +126,61 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
   install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
+
+# Install desktop file for Linux application menu integration
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/com.github.worthies.clash.desktop"
+  DESTINATION "share/applications"
+  COMPONENT Runtime)
+
+# Install PNG icons in standard icon theme paths for various sizes
+# This ensures proper display in desktop environments like Cinnamon, GNOME, KDE
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/runner/icon_16.png"
+  DESTINATION "share/icons/hicolor/16x16/apps"
+  RENAME "com.github.worthies.clash.png"
+  COMPONENT Runtime)
+
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/runner/icon_24.png"
+  DESTINATION "share/icons/hicolor/24x24/apps"
+  RENAME "com.github.worthies.clash.png"
+  COMPONENT Runtime)
+
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/runner/icon_32.png"
+  DESTINATION "share/icons/hicolor/32x32/apps"
+  RENAME "com.github.worthies.clash.png"
+  COMPONENT Runtime)
+
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/runner/icon_48.png"
+  DESTINATION "share/icons/hicolor/48x48/apps"
+  RENAME "com.github.worthies.clash.png"
+  COMPONENT Runtime)
+
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/runner/icon_64.png"
+  DESTINATION "share/icons/hicolor/64x64/apps"
+  RENAME "com.github.worthies.clash.png"
+  COMPONENT Runtime)
+
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/runner/icon_128.png"
+  DESTINATION "share/icons/hicolor/128x128/apps"
+  RENAME "com.github.worthies.clash.png"
+  COMPONENT Runtime)
+
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/runner/icon_256.png"
+  DESTINATION "share/icons/hicolor/256x256/apps"
+  RENAME "com.github.worthies.clash.png"
+  COMPONENT Runtime)
+
+# Also copy icon.png to the bundle directory for runtime access
+# This ensures icons are available even before system theme installation
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/runner/icon.png"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}"
+  COMPONENT Runtime)
+
+# Update icon cache after installation (for system-wide installs)
+# This helps desktop environments discover the new icons quickly
+install(CODE "
+  if(CMAKE_INSTALL_PREFIX MATCHES \"^/usr\")
+    message(STATUS \"Updating icon cache for system-wide installation...\")
+    execute_process(COMMAND gtk-update-icon-cache -f -t /usr/share/icons/hicolor
+                    OUTPUT_QUIET ERROR_QUIET)
+  endif()
+  " COMPONENT Runtime)

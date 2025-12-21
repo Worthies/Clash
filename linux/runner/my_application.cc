@@ -1,11 +1,32 @@
 #include "my_application.h"
 
 #include <flutter_linux/flutter_linux.h>
+#include <glib.h>
+#include <limits.h>
+#include <unistd.h>
+#include <string>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
 #endif
 
 #include "flutter/generated_plugin_registrant.h"
+
+// Message handler to suppress GTK warnings about invalid screens
+// This can happen during initialization before screens are fully set up
+static void suppress_gtk_screen_warning(const gchar *log_domain,
+                                        GLogLevelFlags log_level,
+                                        const gchar *message,
+                                        gpointer user_data) {
+  // Suppress the gtk_icon_theme_get_for_screen assertion failure
+  // This is a known GTK issue during early initialization
+  if (log_level == G_LOG_LEVEL_CRITICAL &&
+      log_domain && g_str_has_prefix(log_domain, "Gtk") &&
+      message && g_strstr_len(message, -1, "gtk_icon_theme_get_for_screen") != NULL) {
+    return;  // Don't print this message
+  }
+  // Print all other messages normally by calling the default handler
+  g_log_default_handler(log_domain, log_level, message, user_data);
+}
 
 struct _MyApplication {
   GtkApplication parent_instance;
@@ -36,7 +57,7 @@ static void my_application_activate(GApplication* application) {
   gboolean use_header_bar = TRUE;
 #ifdef GDK_WINDOWING_X11
   GdkScreen* screen = gtk_window_get_screen(window);
-  if (GDK_IS_X11_SCREEN(screen)) {
+  if (screen && GDK_IS_SCREEN(screen) && GDK_IS_X11_SCREEN(screen)) {
     const gchar* wm_name = gdk_x11_screen_get_window_manager_name(screen);
     if (g_strcmp0(wm_name, "GNOME Shell") != 0) {
       use_header_bar = FALSE;
@@ -55,15 +76,52 @@ static void my_application_activate(GApplication* application) {
 
   gtk_window_set_default_size(window, 1280, 720);
 
-  // Set window icon
-  GError* error = nullptr;
-  GdkPixbuf* icon = gdk_pixbuf_new_from_file("icon.png", &error);
-  if (icon) {
-    gtk_window_set_icon(window, icon);
-    g_object_unref(icon);
-  } else if (error) {
-    g_warning("Failed to load window icon: %s", error->message);
-    g_error_free(error);
+  // Set window icon (taskbar) explicitly.
+  // Cinnamon can display an empty/transparent taskbar icon if the icon is
+  // looked up via theme/WMClass mapping. Prefer a known-good, non-alpha PNG
+  // bundled with Flutter assets.
+  {
+    std::string exe_dir;
+    char exe_buf[PATH_MAX + 1];
+    const ssize_t len = readlink("/proc/self/exe", exe_buf, PATH_MAX);
+    if (len > 0) {
+      exe_buf[len] = '\0';
+      g_autofree gchar* dir = g_path_get_dirname(exe_buf);
+      if (dir != nullptr) {
+        exe_dir = dir;
+      }
+    }
+
+    const std::string candidate1 =
+        exe_dir.empty() ? "" : (exe_dir + "/data/flutter_assets/assets/taskbar_icon_noalpha.png");
+    const std::string candidate2 =
+        exe_dir.empty() ? "" : (exe_dir + "/data/flutter_assets/icon.png");
+    const char* fallback1 = "runner/icon.png";
+    const char* fallback2 = "icon.png";
+
+    GError* error = nullptr;
+    bool set_ok = false;
+    if (!candidate1.empty() && g_file_test(candidate1.c_str(), G_FILE_TEST_EXISTS)) {
+      set_ok = gtk_window_set_icon_from_file(window, candidate1.c_str(), &error);
+    } else if (!candidate2.empty() && g_file_test(candidate2.c_str(), G_FILE_TEST_EXISTS)) {
+      set_ok = gtk_window_set_icon_from_file(window, candidate2.c_str(), &error);
+    } else if (g_file_test(fallback1, G_FILE_TEST_EXISTS)) {
+      set_ok = gtk_window_set_icon_from_file(window, fallback1, &error);
+    } else if (g_file_test(fallback2, G_FILE_TEST_EXISTS)) {
+      set_ok = gtk_window_set_icon_from_file(window, fallback2, &error);
+    }
+
+    if (!set_ok) {
+      if (error) {
+        g_warning("Failed to set window icon: %s", error->message);
+        g_clear_error(&error);
+      } else {
+        g_warning("Failed to set window icon: no usable icon file found");
+      }
+    } else if (error) {
+      // Some GTK paths can return true but still set an error.
+      g_clear_error(&error);
+    }
   }
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
@@ -142,11 +200,48 @@ static void my_application_class_init(MyApplicationClass* klass) {
 static void my_application_init(MyApplication* self) {}
 
 MyApplication* my_application_new() {
+  // Suppress GTK warnings about invalid screens during initialization
+  // This is a known GTK 3.22+ issue that occurs before screens are fully set up
+  g_log_set_handler("Gtk", G_LOG_LEVEL_CRITICAL, suppress_gtk_screen_warning, NULL);
+
   // Set the program name to the application ID, which helps various systems
   // like GTK and desktop environments map this running application to its
   // corresponding .desktop file. This ensures better integration by allowing
   // the application to be recognized beyond its binary name.
   g_set_prgname(APPLICATION_ID);
+
+  // Set application default icon from system theme
+  // This ensures the icon shows in the application menu and system indicators
+  // Use gtk_icon_theme_get_default() which is safer than get_for_screen()
+  GError* error = nullptr;
+  GtkIconTheme* icon_theme = gtk_icon_theme_get_default();
+  if (icon_theme) {
+    GdkPixbuf* app_icon = gtk_icon_theme_load_icon(icon_theme, APPLICATION_ID, 256,
+                                                     GTK_ICON_LOOKUP_GENERIC_FALLBACK, &error);
+    if (app_icon) {
+      gtk_window_set_default_icon(app_icon);
+      g_object_unref(app_icon);
+    }
+    if (error) {
+      g_clear_error(&error);
+    }
+  }
+
+  // Fallback: try to load from file if theme lookup fails
+  if (!icon_theme) {
+    GdkPixbuf* fallback_icon = nullptr;
+
+    if (g_file_test("runner/icon.png", G_FILE_TEST_EXISTS)) {
+      fallback_icon = gdk_pixbuf_new_from_file("runner/icon.png", nullptr);
+    } else if (g_file_test("icon.png", G_FILE_TEST_EXISTS)) {
+      fallback_icon = gdk_pixbuf_new_from_file("icon.png", nullptr);
+    }
+
+    if (fallback_icon) {
+      gtk_window_set_default_icon(fallback_icon);
+      g_object_unref(fallback_icon);
+    }
+  }
 
   return MY_APPLICATION(g_object_new(my_application_get_type(),
                                      "application-id", APPLICATION_ID,

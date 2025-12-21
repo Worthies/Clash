@@ -15,15 +15,18 @@ android {
         targetCompatibility = JavaVersion.VERSION_11
     }
 
+    // Enable detailed deprecation warnings during compilation so we can find and fix
+    // usages of deprecated Android APIs (temporary – helpful for diagnostics).
+    tasks.withType<JavaCompile>().configureEach {
+        options.compilerArgs.add("-Xlint:deprecation")
+    }
+
     kotlinOptions {
         jvmTarget = JavaVersion.VERSION_11.toString()
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
         applicationId = "com.github.worthies.clash"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
@@ -37,8 +40,26 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    sourceSets.named("main") {
+        java.srcDir("src/main/java")
+    }
 }
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // AndroidX
+    implementation("androidx.appcompat:appcompat:1.6.1")
+    implementation("androidx.activity:activity:1.8.0")
+    implementation("androidx.core:core:1.12.0")
+
+    // Material Design
+    implementation("com.google.android.material:material:1.11.0")
+
+    // Unit testing
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.mockito:mockito-core:4.11.0")
 }

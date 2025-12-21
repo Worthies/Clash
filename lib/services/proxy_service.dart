@@ -1,11 +1,21 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/services.dart';
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import '../models/clash_models.dart';
 import '../protocols/trojan_protocol.dart';
 import '../protocols/shadowsocks_protocol.dart';
 import '../protocols/socks5_handler.dart';
+
+/// Internal mapping entry for UDP relay: maps destination -> client UDP address
+class _ClientMapping {
+  final InternetAddress clientAddr;
+  final int clientPort;
+  DateTime lastSeen;
+
+  _ClientMapping(this.clientAddr, this.clientPort, this.lastSeen);
+}
 
 /// Service to manage proxy connections and local proxy server
 class ProxyService {
@@ -14,6 +24,7 @@ class ProxyService {
   final int _localPort;
   bool _isRunning = false;
   bool _allowLan = false;
+  // Relay removed; no local relay is used anymore.
 
   // Traffic statistics (cumulative bytes)
   int _totalUpload = 0;
@@ -62,6 +73,10 @@ class ProxyService {
 
       _activeNode = node;
 
+      // On Android, if the VPN service is running, start a local protected relay
+      // so that outbound connections to the real proxy node bypass the VPN.
+      // NO-OP: we no longer start a local relay; rely on VPN routing & native protections.
+
       // Start local SOCKS/HTTP proxy server
       await _startLocalServer();
 
@@ -84,6 +99,7 @@ class ProxyService {
     }
     _trafficUpdateTimer?.cancel();
     _trafficUpdateTimer = null;
+    // NO-OP: removed relay cleanup. Any required protections are applied by the VPN service.
     _activeNode = null;
     _isRunning = false;
   }
@@ -188,7 +204,186 @@ class ProxyService {
         return;
       }
 
-      // Send success reply
+      // If UDP ASSOCIATE (0x03), set up UDP relay
+      if (request.cmd == 0x03) {
+        // Bind UDP socket on loopback or any depending on allowLan
+        final bindAddr = _allowLan ? InternetAddress.anyIPv4 : InternetAddress.loopbackIPv4;
+        final udpSocket = await RawDatagramSocket.bind(bindAddr, 0);
+
+        // Send reply with the UDP relay bind address/port
+        handler.sendReplyWithBind(udpSocket.address, udpSocket.port);
+
+        // Socket pool to prevent FD exhaustion (limit concurrent outbound sockets)
+        final List<RawDatagramSocket> socketPool = [];
+        int nextSocketIndex = 0;
+        const int maxPoolSize = 4;
+
+        // Map: "socketPort:srcIP:srcPort" -> client info (for multi-dest on same socket)
+        final Map<String, _ClientMapping> responseKeyToClient = {};
+
+        String makeResponseKey(int socketPort, String srcIP, int srcPort) => '$socketPort:$srcIP:$srcPort';
+
+        // Get or create socket from pool
+        Future<RawDatagramSocket> getPoolSocket() async {
+          if (socketPool.length < maxPoolSize) {
+            final sock = await RawDatagramSocket.bind(InternetAddress.anyIPv4, 0);
+            socketPool.add(sock);
+
+            // Listen for responses on this outbound socket
+            sock.listen((event) {
+              if (event == RawSocketEvent.read) {
+                final response = sock.receive();
+                if (response == null) return;
+
+                // Build key: socketPort:responseSourceIP:responseSourcePort
+                final key = makeResponseKey(sock.port, response.address.address, response.port);
+                final client = responseKeyToClient[key];
+                if (client == null) return;
+
+                // Build SOCKS5 UDP response header
+                final addrParts = <int>[];
+                if (response.address.type == InternetAddressType.IPv4) {
+                  addrParts.add(0x01);
+                  addrParts.addAll(response.address.rawAddress);
+                } else {
+                  addrParts.add(0x04);
+                  addrParts.addAll(response.address.rawAddress);
+                }
+                final portHigh = (response.port >> 8) & 0xFF;
+                final portLow = response.port & 0xFF;
+
+                final header = <int>[0x00, 0x00, 0x00] + addrParts + [portHigh, portLow];
+                final out = <int>[...header, ...response.data];
+
+                // Send back to client via relay socket
+                try {
+                  udpSocket.send(out, client.clientAddr, client.clientPort);
+                } catch (_) {}
+              }
+            });
+
+            return sock;
+          } else {
+            // Reuse socket in round-robin
+            final sock = socketPool[nextSocketIndex];
+            nextSocketIndex = (nextSocketIndex + 1) % socketPool.length;
+            return sock;
+          }
+        }
+
+        // Listen for SOCKS5 packets from client
+        udpSocket.listen((event) {
+          if (event == RawSocketEvent.read) {
+            final dg = udpSocket.receive();
+            if (dg == null) return;
+
+            final data = dg.data;
+
+            // Must be SOCKS5 UDP encapsulated
+            if (data.length < 10 || data[0] != 0 || data[1] != 0) return;
+
+            final frag = data[2];
+            if (frag != 0) return;
+
+            // Parse destination
+            int idx = 3;
+            int atyp = data[idx++];
+            InternetAddress? dstAddr;
+
+            try {
+              if (atyp == 0x01) {
+                final bytes = data.sublist(idx, idx + 4);
+                dstAddr = InternetAddress(bytes.join('.'));
+                idx += 4;
+              } else if (atyp == 0x03) {
+                final len = data[idx++];
+                final bytes = data.sublist(idx, idx + len);
+                final host = String.fromCharCodes(bytes);
+                idx += len;
+                try {
+                  dstAddr = InternetAddress(host);
+                } catch (_) {
+                  return;
+                }
+              } else if (atyp == 0x04) {
+                final bytes = data.sublist(idx, idx + 16);
+                dstAddr = InternetAddress.fromRawAddress(Uint8List.fromList(bytes));
+                idx += 16;
+              } else {
+                return;
+              }
+            } catch (_) {
+              return;
+            }
+
+            final dstPort = (data[idx] << 8) | data[idx + 1];
+            idx += 2;
+            final payload = data.sublist(idx);
+
+            // Capture for async callback
+            final capturedAddr = dstAddr;
+            final capturedPort = dstPort;
+            final capturedClientAddr = dg.address;
+            final capturedClientPort = dg.port;
+
+            // Get socket from pool and send
+            getPoolSocket()
+                .then((outSocket) {
+                  // IMPORTANT: Map socketPort:destIP:destPort -> client
+                  // This allows multiple destinations to share same socket
+                  final responseKey = makeResponseKey(outSocket.port, capturedAddr.address, capturedPort);
+                  responseKeyToClient[responseKey] = _ClientMapping(capturedClientAddr, capturedClientPort, DateTime.now());
+
+                  // Send to destination
+                  try {
+                    outSocket.send(payload, capturedAddr, capturedPort);
+                  } catch (_) {}
+                })
+                .catchError((_) {});
+          }
+        });
+
+        // Cleanup timer to remove stale socket mappings (prevent memory leak)
+        final cleanupTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+          final now = DateTime.now();
+          responseKeyToClient.removeWhere((key, mapping) => now.difference(mapping.lastSeen).inSeconds > 60);
+        });
+
+        // Keep TCP control connection alive; close UDP sockets when it ends
+        socketStream.listen(
+          (_) {},
+          onDone: () {
+            cleanupTimer.cancel();
+            try {
+              udpSocket.close();
+            } catch (_) {}
+            for (final sock in socketPool) {
+              try {
+                sock.close();
+              } catch (_) {}
+            }
+            socketPool.clear();
+            responseKeyToClient.clear();
+          },
+          onError: (_) {
+            cleanupTimer.cancel();
+            try {
+              udpSocket.close();
+            } catch (_) {}
+            for (final sock in socketPool) {
+              try {
+                sock.close();
+              } catch (_) {}
+            }
+            socketPool.clear();
+            responseKeyToClient.clear();
+          },
+        );
+
+        return;
+      }
+
+      // Send success reply for CONNECT
       handler.sendSuccessReply();
 
       // Get remaining data after handshake from the handler's buffer
@@ -372,7 +567,10 @@ class ProxyService {
         throw Exception('Trojan node missing password');
       }
 
-      final trojan = TrojanProtocol(node: _activeNode!, password: password);
+      // Use directly configured node; relay removed.
+      ProxyNode nodeToUse = _activeNode!;
+
+      final trojan = TrojanProtocol(node: nodeToUse, password: password);
       final connection = await trojan.connect(targetHost, targetPort);
 
       // Send any initial data immediately (data after SOCKS5 handshake)
@@ -454,7 +652,10 @@ class ProxyService {
         throw Exception('Shadowsocks node missing password');
       }
 
-      final ss = ShadowsocksProtocol(node: _activeNode!, password: password, method: cipher);
+      // Use directly configured node; relay removed.
+      ProxyNode nodeToUse = _activeNode!;
+
+      final ss = ShadowsocksProtocol(node: nodeToUse, password: password, method: cipher);
       final connection = await ss.connect(targetHost, targetPort);
 
       // Send any initial data immediately (data after SOCKS5 handshake)

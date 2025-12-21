@@ -83,15 +83,36 @@ fi
 
 cat > "$USR_BIN_DIR/$PKG_NAME" <<'WRAPPER_EOF'
 #!/usr/bin/env bash
-# If running in KDE/Plasma, some appindicator implementations behave better
-# when XDG_CURRENT_DESKTOP is set to 'Unity' or 'GNOME'. Coerce that here
-# so the tray indicator registration uses the AppIndicator path that Plasma
-# will display.
-case "${XDG_CURRENT_DESKTOP:-${DESKTOP_SESSION:-}}" in
+# Configure environment for proper system tray (status notifier) support across desktop environments
+#
+# Different DEs have different requirements for tray icons:
+# - KDE/Plasma: Prefers Unity/AppIndicator protocol
+# - GNOME/Cinnamon: Needs SNI (Status Notifier Item) via dbus
+# - Unity: Works with both but AppIndicator is preferred
+#
+# By setting XDG_CURRENT_DESKTOP to Unity/GNOME as appropriate, we help the
+# system_tray flutter plugin choose the right protocol
+
+DE="${XDG_CURRENT_DESKTOP:-${DESKTOP_SESSION:-}}"
+
+case "$DE" in
   *KDE*|*Plasma*|plasma)
+    # KDE/Plasma: Use Unity AppIndicator protocol
     export XDG_CURRENT_DESKTOP=Unity
     ;;
+  *GNOME*|*Cinnamon*|cinnamon|gnome)
+    # GNOME and Cinnamon: Ensure proper SNI/AppIndicator support
+    # Some versions work better with Unity protocol
+    export XDG_CURRENT_DESKTOP=GNOME
+    ;;
+  *)
+    # For unknown/other DEs, try Unity as a safe default for AppIndicator support
+    if [ -z "$XDG_CURRENT_DESKTOP" ]; then
+      export XDG_CURRENT_DESKTOP=Unity
+    fi
+    ;;
 esac
+
 exec "/opt/clash/clash" "$@"
 WRAPPER_EOF
 chmod 0755 "$USR_BIN_DIR/$PKG_NAME"
@@ -105,7 +126,7 @@ Icon=/usr/share/pixmaps/$PKG_NAME.png
 Type=Application
 Categories=Network;Utility;
 Terminal=false
-StartupWMClass=Clash
+StartupWMClass=com.github.worthies.clash
 EOF
 
 # Icon (optional) - try to find a png in repository and install several sizes
@@ -173,6 +194,11 @@ fi
 if [ -f /usr/share/pixmaps/$PKG_NAME.png ]; then
   mkdir -p /opt/$PKG_NAME/data/flutter_assets || true
   ln -sf /usr/share/pixmaps/$PKG_NAME.png /opt/$PKG_NAME/data/flutter_assets/icon.png || true
+fi
+# Create symlink for dedicated tray icon (24x24 optimized for Cinnamon compatibility)
+if [ -f /usr/share/icons/hicolor/24x24/apps/$PKG_NAME.png ]; then
+  mkdir -p /opt/$PKG_NAME/data/flutter_assets/assets || true
+  ln -sf /usr/share/icons/hicolor/24x24/apps/$PKG_NAME.png /opt/$PKG_NAME/data/flutter_assets/assets/tray_icon.png || true
 fi
 exit 0
 EOF

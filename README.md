@@ -2,7 +2,7 @@
 
 A **fully functional** cross-platform Clash proxy tool built with Flutter 🚀
 
-![](assets/home.png)
+![Home page](assets/home.png)
 
 ![Flutter](https://img.shields.io/badge/Flutter-3.35.4-02569B?logo=flutter)
 ![Dart](https://img.shields.io/badge/Dart-3.9.2-0175C2?logo=dart)
@@ -13,9 +13,12 @@ A **fully functional** cross-platform Clash proxy tool built with Flutter 🚀
 
 This is a **production-ready** Clash proxy management tool with actual proxy protocol implementations, similar to clash-verge-rev but built with Flutter for true cross-platform support. Unlike typical Flutter UI demos, this project includes **working proxy protocols** (Trojan, Shadowsocks) with SOCKS5 server support.
 
+**🎉 BREAKING NEWS**: Clash now **works on Android**! The implementation includes a complete VPN service with in-process TUN device packet processing, traffic interception, and proxy forwarding.
+
 ## ✨ Key Features
 
 ### 🔐 **Working Proxy Protocols**
+
 - ✅ **Trojan Protocol** - Full implementation with SHA224 authentication
 - ✅ **Shadowsocks Protocol** - AEAD ciphers (AES-GCM, ChaCha20-Poly1305)
 - ✅ **SOCKS5 Server** - Auto-detection, IPv4/IPv6/domain support
@@ -44,12 +47,14 @@ This is a **production-ready** Clash proxy management tool with actual proxy pro
 - ✅ **Auto-Reconnect** - Automatically reconnects to last selected proxy on startup
 - ✅ **Traffic Monitoring** - Real-time upload/download statistics
 - ✅ **Local Proxy Server** - SOCKS5/HTTP on port 1080 (configurable)
+- ✅ **Android VPN** - Full VPN integration with in-process TUN processor
+- ✅ **Private Rules** - Password-protected rule editing (4-digit PIN)
 
 ## 🏗️ Architecture
 
 ### Protocol Implementations
 
-```
+```text
 lib/protocols/
 ├── trojan_protocol.dart          # Trojan protocol (SHA224 auth, TCP tunnel)
 ├── shadowsocks_protocol.dart     # Shadowsocks AEAD (AES-GCM, ChaCha20)
@@ -58,7 +63,7 @@ lib/protocols/
 
 ### Core Services
 
-```
+```text
 lib/services/
 ├── clash_state.dart              # State management (Provider)
 └── proxy_service.dart            # Local proxy server & connections
@@ -66,14 +71,14 @@ lib/services/
 
 ### Data Models
 
-```
+```text
 lib/models/
 └── clash_models.dart             # ProxyNode, ProxyGroup, Profile, etc.
 ```
 
 ### UI Pages
 
-```
+```text
 lib/pages/
 ├── home_page.dart               # Dashboard
 ├── proxies_page.dart            # Proxy management (scrollable groups)
@@ -95,17 +100,20 @@ lib/pages/
 ### Installation
 
 1. **Clone the repository:**
+
 ```bash
 git clone https://github.com/Worthies/Clash.git
 cd Clash
 ```
 
-2. **Install dependencies:**
+1. **Install dependencies:**
+
 ```bash
 flutter pub get
 ```
 
-3. **Run the application:**
+1. **Run the application:**
+
 ```bash
 flutter run                  # Auto-select device
 flutter run -d linux         # For Linux
@@ -145,6 +153,7 @@ Comprehensive documentation is available in the `/docs` directory:
 ### Supported Proxy Types
 
 #### Trojan
+
 ```yaml
 - name: 'My Trojan Server'
   type: trojan
@@ -157,6 +166,7 @@ Comprehensive documentation is available in the `/docs` directory:
 ```
 
 #### Shadowsocks
+
 ```yaml
 - name: 'My SS Server'
   type: ss
@@ -174,12 +184,14 @@ Comprehensive documentation is available in the `/docs` directory:
 ### Local Proxy Server
 
 The app runs a local proxy server on:
+
 - **Default Port:** 1080
 - **Protocols:** SOCKS5 (recommended), HTTP CONNECT
 - **Binding:** 127.0.0.1 (localhost only)
 
 Configure your applications to use:
-```
+
+```text
 SOCKS5 Proxy: 127.0.0.1:1080
 No Authentication Required
 ```
@@ -187,20 +199,24 @@ No Authentication Required
 ## 🧪 Testing
 
 ### Run Unit Tests
+
 ```bash
 flutter test
 ```
 
 ### Test with Real Proxy
+
 1. Load a Clash YAML subscription
 2. Select a Trojan or Shadowsocks node
 3. Click "Connect"
 4. Use a SOCKS5 client to test:
+
 ```bash
 curl --socks5 127.0.0.1:1080 https://ifconfig.me
 ```
 
 ### Speed Testing
+
 - Click "Test Speed" on individual nodes
 - Or use "Test All" button to batch test all nodes
 - Results are sorted by latency (fastest first)
@@ -209,6 +225,7 @@ curl --socks5 127.0.0.1:1080 https://ifconfig.me
 ## 📦 Dependencies
 
 ### Production
+
 - **flutter**: SDK
 - **provider**: ^6.1.2 - State management
 - **http**: ^1.2.1 - HTTP requests
@@ -218,18 +235,21 @@ curl --socks5 127.0.0.1:1080 https://ifconfig.me
 - **cupertino_icons**: ^1.0.8 - iOS icons
 
 ### Development
+
 - **flutter_test**: SDK - Testing framework
 - **flutter_lints**: ^4.0.0 - Code quality
 
 ## 🎨 Features in Detail
 
 ### Traffic Monitor Panel
+
 - Persistent display on all pages
 - Real-time upload/download statistics
 - Formatted byte values (B, KB, MB, GB)
 - Color-coded indicators (blue=upload, green=download, orange=total)
 
 ### Proxy Management
+
 - **Scrollable Groups** - Responsive layout with flexible node cards
 - **Speed Indicators** - Green (<500ms), Orange (<1000ms), Red (>1000ms)
 - **Protocol Display** - TCP/UDP badges for each node
@@ -238,6 +258,7 @@ curl --socks5 127.0.0.1:1080 https://ifconfig.me
 - **Persistent Selection** - Remembers selected nodes per group
 
 ### Subscription Support
+
 - YAML format parsing (Clash standard)
 - Auto-parse proxies, groups, and rules
 - Base64 encoded subscriptions supported
@@ -245,6 +266,7 @@ curl --socks5 127.0.0.1:1080 https://ifconfig.me
 - Profile management with activation status
 
 ### Connection Monitoring
+
 - View active connections in real-time
 - Per-connection traffic statistics
 - Source/destination information
@@ -262,7 +284,7 @@ curl --socks5 127.0.0.1:1080 https://ifconfig.me
 ## 🚧 Implementation Status
 
 | Feature | Status | Notes |
-|---------|--------|-------|
+| --------- | -------- | ------- |
 | Trojan Protocol | ✅ Complete | SHA224 auth, TCP tunnel |
 | Shadowsocks | ✅ Complete | Simplified AEAD (needs FFI for production) |
 | SOCKS5 Server | ✅ Complete | IPv4/IPv6/domain, NO AUTH |
@@ -294,12 +316,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🔗 Links
 
-- **Repository:** https://github.com/Worthies/Clash
-- **Issues:** https://github.com/Worthies/Clash/issues
-- **Flutter:** https://flutter.dev
-- **Clash:** https://github.com/Dreamacro/clash
+- **Repository:** <https://github.com/Worthies/Clash>
+- **Issues:** <https://github.com/Worthies/Clash/issues>
+- **Flutter:** <https://flutter.dev>
+- **Clash:** <https://github.com/Dreamacro/clash>
 
 ---
 
 **Made with ❤️ using Flutter** | **Star ⭐ if you find this useful!**
-
