@@ -169,8 +169,8 @@ jobs:
       - name: Prepare release tag
         id: tag
         run: |
-          echo "RELEASE_TAG=nightly-$(git rev-parse --short "$GITHUB_SHA")-$(date -u +%Y%m%d%H%M)" >> $GITHUB_ENV
-          echo "RELEASE_NAME=Nightly build $(git rev-parse --short "$GITHUB_SHA") $(date -u +%Y%m%d%H%M)" >> $GITHUB_ENV
+          echo "RELEASE_TAG=nightly" >> $GITHUB_ENV
+          echo "RELEASE_NAME=Nightly build ($(git rev-parse --short "$GITHUB_SHA"))" >> $GITHUB_ENV
 
       - name: Show downloaded artifacts
         run: |
@@ -180,6 +180,13 @@ jobs:
           mv clash-macos-*.zip clash-macos.zip
           mv clash-web-*.zip clash-web.zip
 
+      - name: Delete old nightly release
+        run: |
+          # Delete old nightly release if it exists
+          gh release delete nightly --yes || true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Create GitHub release
         id: create_release
         uses: actions/create-release@v1
@@ -187,7 +194,7 @@ jobs:
           tag_name: ${{ env.RELEASE_TAG }}
           release_name: ${{ env.RELEASE_NAME }}
           body: |
-            Nightly automated builds for ${GITHUB_REPOSITORY}.
+            Latest nightly automated build for ${GITHUB_REPOSITORY}.
           draft: false
           prerelease: true
         env:
