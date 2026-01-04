@@ -299,7 +299,7 @@ build-linux:
 	@if [ "$(OS)" = "linux" ]; then \
 		$(call log_info,Building Linux executable...); \
 		mkdir -p $(output_dir)/linux; \
-		CMAKE_INSTALL_COMPONENT="Bundle" CMAKE_INSTALL_PREFIX="$(PWD)/$(output_dir)/linux" flutter build linux --$(mode) $(if $(filter true,$(verbose)),--verbose); \
+		flutter build linux --$(mode) $(if $(filter true,$(verbose)),--verbose); \
 		if [ -d "build/linux/x64/$(mode)/bundle" ]; then \
 			cp -r build/linux/x64/$(mode)/bundle/* $(output_dir)/linux/ 2>/dev/null || true; \
 			$(call create_archive,linux,tar.gz); \
@@ -317,10 +317,21 @@ package-deb: build-linux
 	@$(call log_info,Packaging Debian .deb using tools/package_deb.sh)
 	@mkdir -p $(output_dir)/deb
 	@chmod +x tools/package_deb.sh || true
-	@# Default to git describe for version; caller can set VERSION env var
-	@VERSION=$${version:-$$(git describe --tags --always --dirty 2>/dev/null || echo "nightly-$$(date -u +%Y%m%d%H%M)" )} && \
-		./tools/package_deb.sh "$${VERSION}" && \
-		mv build/deb/*.deb $(output_dir)/deb/ || true
+	@# Generate valid Debian version string: must start with digit
+	@if [ -n "$(version)" ]; then \
+		VERSION="$(version)"; \
+	else \
+		GIT_VERSION=$$(git describe --tags --always --dirty 2>/dev/null || echo ""); \
+		if [ -n "$$GIT_VERSION" ] && echo "$$GIT_VERSION" | grep -qE '^[0-9]'; then \
+			VERSION="$$GIT_VERSION"; \
+		elif [ -n "$$GIT_VERSION" ]; then \
+			VERSION="1.$$(date -u +%Y%m%d).$$GIT_VERSION"; \
+		else \
+			VERSION="1.$$(date -u +%Y%m%d%H%M)"; \
+		fi; \
+	fi && \
+	./tools/package_deb.sh "$$VERSION" && \
+	mv build/deb/*.deb $(output_dir)/deb/ || true
 	@$(call log_success,Debian package created in $(output_dir)/deb)
 
 .PHONY: build-android
