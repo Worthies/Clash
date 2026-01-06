@@ -139,10 +139,52 @@ jobs:
           name: clash-web
           path: artifacts/*.zip
 
+  build-android:
+    name: Build Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.4'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Android APK
+        run: flutter build apk --release
+
+      - name: Build Android App Bundle
+        run: flutter build appbundle --release
+
+      - name: Prepare Android artifacts
+        run: |
+          mkdir -p build/dist/android
+          if [ -f build/app/outputs/flutter-apk/app-release.apk ]; then
+            cp build/app/outputs/flutter-apk/app-release.apk build/dist/android/
+          fi
+          if [ -f build/app/outputs/bundle/release/app-release.aab ]; then
+            cp build/app/outputs/bundle/release/app-release.aab build/dist/android/
+          fi
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: clash-android
+          path: build/dist/android/
+
   release:
     name: Create Nightly Release
     runs-on: ubuntu-latest
-    needs: [build-linux, build-windows, build-macos, build-web]
+    needs: [build-linux, build-windows, build-macos, build-web, build-android]
     steps:
       - uses: actions/checkout@v4
 
@@ -166,6 +208,11 @@ jobs:
         with:
           name: clash-web
 
+      - name: Download Android artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: clash-android
+
       - name: Prepare release tag
         id: tag
         run: |
@@ -175,10 +222,38 @@ jobs:
       - name: Show downloaded artifacts
         run: |
           ls -al
-          mv clash_*.deb clash-linux.deb
-          mv clash-windows-*.zip clash-windows.zip
-          mv clash-macos-*.zip clash-macos.zip
-          mv clash-web-*.zip clash-web.zip
+          # Organize artifacts
+          mkdir -p release-artifacts
+          
+          # Handle Linux artifacts
+          if ls clash_*.deb 1> /dev/null 2>&1; then
+            mv clash_*.deb release-artifacts/clash-linux.deb
+          fi
+          
+          # Handle Windows artifacts
+          if ls clash-windows-*.zip 1> /dev/null 2>&1; then
+            mv clash-windows-*.zip release-artifacts/clash-windows.zip
+          fi
+          
+          # Handle macOS artifacts
+          if ls clash-macos-*.zip 1> /dev/null 2>&1; then
+            mv clash-macos-*.zip release-artifacts/clash-macos.zip
+          fi
+          
+          # Handle web artifacts
+          if ls clash-web-*.zip 1> /dev/null 2>&1; then
+            mv clash-web-*.zip release-artifacts/clash-web.zip
+          fi
+          
+          # Handle Android artifacts
+          if ls *.apk 1> /dev/null 2>&1; then
+            mv *.apk release-artifacts/
+          fi
+          if ls *.aab 1> /dev/null 2>&1; then
+            mv *.aab release-artifacts/
+          fi
+          
+          ls -al release-artifacts/
 
       - name: Delete old nightly release
         run: |
@@ -204,7 +279,7 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./clash-linux.deb
+          asset_path: ./release-artifacts/clash-linux.deb
           asset_name: clash-linux.deb
           asset_content_type: application/vnd.debian.binary-package
         env:
@@ -214,7 +289,7 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./clash-windows.zip
+          asset_path: ./release-artifacts/clash-windows.zip
           asset_name: clash-windows.zip
           asset_content_type: application/zip
         env:
@@ -224,7 +299,7 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./clash-macos.zip
+          asset_path: ./release-artifacts/clash-macos.zip
           asset_name: clash-macos.zip
           asset_content_type: application/zip
         env:
@@ -234,8 +309,28 @@ jobs:
         uses: actions/upload-release-asset@v1
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./clash-web.zip
+          asset_path: ./release-artifacts/clash-web.zip
           asset_name: clash-web.zip
           asset_content_type: application/zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Android APK asset
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release-artifacts/app-release.apk
+          asset_name: clash-android.apk
+          asset_content_type: application/vnd.android.package-archive
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Android AAB asset
+        uses: actions/upload-release-asset@v1
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./release-artifacts/app-release.aab
+          asset_name: clash-android.aab
+          asset_content_type: application/octet-stream
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

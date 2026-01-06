@@ -35,6 +35,7 @@ This is a **production-ready** Clash proxy management tool with actual proxy pro
 6. **Logs** - Application logs with filtering
 7. **Test** - Batch proxy speed testing
 8. **Settings** - System configuration
+9. **Android VPN** - System-wide proxy with in-process TUN processor
 
 ### 🚀 **Advanced Capabilities**
 
@@ -134,6 +135,18 @@ flutter run -d chrome        # For Web
 6. Select a proxy node
 7. Test speed or connect to the proxy
 8. Configure your browser/system to use SOCKS5: `127.0.0.1:1080`
+
+### 📦 Automated Releases
+
+Nightly builds are automatically created and published to GitHub Releases for all platforms:
+
+- **Linux** (`.deb` package)
+- **Windows** (`.zip` executable)
+- **macOS** (`.zip` bundle)
+- **Android** (`.apk` and `.aab` packages)
+- **Web** (`.zip` bundle)
+
+Visit [GitHub Releases](https://github.com/Worthies/Clash/releases) to download the latest nightly build for your platform.
 
 ## 📖 Documentation
 
