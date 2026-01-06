@@ -845,10 +845,13 @@ class ClashState extends ChangeNotifier {
           }
         }
 
-        // Mark active profile
+        // Mark active profile and update lastUpdate timestamp
         for (int i = 0; i < _profiles.length; i++) {
           final p = _profiles[i];
-          _profiles[i] = p.copyWith(isActive: p.name == profile.name && p.url == profile.url);
+          _profiles[i] = p.copyWith(
+            isActive: p.name == profile.name && p.url == profile.url,
+            lastUpdate: p.name == profile.name && p.url == profile.url ? DateTime.now() : null,
+          );
         }
 
         await _saveProfiles();
